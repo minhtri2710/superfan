@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { Sliders, Shield, Flame, Zap, Plus, Check, Trash2, Cpu, Thermometer } from "lucide-react";
-import { FanRule, TemperatureReading } from "../types";
+import { TemperatureReading, ThermalPolicyMode, ThermalRule, ThermalTarget } from "../types";
 
 interface FanRuleManagerProps {
-  activePreset: "auto" | "quiet" | "performance" | "custom";
-  customRules: FanRule[];
+  activePreset: ThermalPolicyMode;
+  customRules: ThermalRule[];
   sensors: TemperatureReading[];
-  onSelectPreset: (preset: "auto" | "quiet" | "performance" | "custom") => void;
-  onSaveRule: (rule: FanRule) => void;
+  onSelectPreset: (preset: ThermalPolicyMode) => void;
+  onSaveRule: (rule: ThermalRule) => void;
   onDeleteRule: (id: string) => void;
 }
 
@@ -28,14 +28,18 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
   const [ruleName, setRuleName] = useState<string>("Custom Thermal Profile");
 
   const handleCreateRule = () => {
-    const newRule: FanRule = {
+    const target: ThermalTarget =
+      targetSensor === "hottest" || targetSensor === "cpu" || targetSensor === "gpu"
+        ? { type: targetSensor }
+        : { type: "sensor_key", key: targetSensor };
+    const newRule: ThermalRule = {
       id: Date.now().toString(),
       name: ruleName,
-      targetSensor,
-      lowTemp,
-      highTemp,
-      minFanPercent: minFan,
-      maxFanPercent: maxFan,
+      target,
+      low_celsius: lowTemp,
+      high_celsius: highTemp,
+      min_fan_percent: minFan,
+      max_fan_percent: maxFan,
       active: true,
     };
     onSaveRule(newRule);
@@ -63,16 +67,16 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
       <div className="grid grid-cols-3 gap-2 text-[11px]">
         {/* macOS Auto */}
         <button
-          onClick={() => onSelectPreset("auto")}
+          onClick={() => onSelectPreset("system_auto")}
           className={`p-2.5 rounded-xl border text-left transition-all ${
-            activePreset === "auto"
+            activePreset === "system_auto"
               ? "bg-cyan-500/20 border-cyan-500/50 text-white shadow-md shadow-cyan-500/10"
               : "bg-slate-900/40 border-white/5 text-slate-400 hover:text-white"
           }`}
         >
           <div className="flex items-center justify-between mb-1">
             <Shield className="w-3.5 h-3.5 text-emerald-400" />
-            {activePreset === "auto" && <Check className="w-3 h-3 text-cyan-400" />}
+            {activePreset === "system_auto" && <Check className="w-3 h-3 text-cyan-400" />}
           </div>
           <div className="font-bold text-xs">System Auto</div>
           <div className="text-[9px] text-slate-400 mt-0.5">Default Apple SMC</div>
@@ -253,7 +257,7 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
               <div>
                 <div className="font-semibold text-white">{r.name}</div>
                 <div className="text-[9px] text-slate-400 font-mono mt-0.5">
-                  Target: {r.targetSensor} | {r.lowTemp}°C - {r.highTemp}°C ({r.minFanPercent}%-{r.maxFanPercent}%)
+                  Target: {r.target.type === "sensor_key" ? r.target.key : r.target.type} | {r.low_celsius}°C - {r.high_celsius}°C ({r.min_fan_percent}%-{r.max_fan_percent}%)
                 </div>
               </div>
               <button

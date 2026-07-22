@@ -13,9 +13,11 @@ import {
   AppSettings,
   BatteryReading,
   FanReading,
-  FanRule,
   HardwareTelemetrySnapshot,
   TemperatureReading,
+  ThermalPolicyMode,
+  ThermalPolicySettings,
+  ThermalRule,
 } from "./types";
 import { ShieldAlert, ShieldCheck } from "lucide-react";
 
@@ -31,13 +33,16 @@ export function App() {
   const [tempHistory, setTempHistory] = useState<
     { time: number; cpu: number; gpu: number | null }[]
   >([]);
-  const [customRules, setCustomRules] = useState<FanRule[]>([]);
+  const [thermalPolicy, setThermalPolicy] = useState<ThermalPolicySettings>({
+    mode: "system_auto",
+    rules: [],
+  });
   const [activeTab, setActiveTab] = useState<"overview" | "dashboard" | "settings">("overview");
+  const [policyError, setPolicyError] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>({
     tempUnit: "C",
     pollingInterval: 1500,
     launchAtLogin: false,
-    activePreset: "auto",
   });
 
   const recordSnapshot = (snapshot: HardwareTelemetrySnapshot) => {
@@ -62,6 +67,9 @@ export function App() {
     invoke<HardwareTelemetrySnapshot>("fetch_telemetry")
       .then(recordSnapshot)
       .catch((error) => console.error("Hardware telemetry snapshot fetch failed:", error));
+    invoke<ThermalPolicySettings>("thermal_policy_settings")
+      .then(setThermalPolicy)
+      .catch((error) => console.error("Thermal policy settings fetch failed:", error));
 
     const unlistenPromise = listen<HardwareTelemetrySnapshot>("telemetry-update", (event) => {
       recordSnapshot(event.payload);
@@ -92,12 +100,37 @@ export function App() {
     invoke("toggle_popover").catch(() => {});
   };
 
-  const handleSaveRule = (rule: FanRule) => {
-    setCustomRules((prev) => [...prev, rule]);
+  const handleSelectPolicyMode = async (mode: ThermalPolicyMode) => {
+    try {
+      const updated = await invoke<ThermalPolicySettings>("select_thermal_policy_mode", { mode });
+      setThermalPolicy(updated);
+      setPolicyError(null);
+    } catch (error) {
+      setPolicyError(String(error));
+      console.error("Select Thermal policy mode failed:", error);
+    }
   };
 
-  const handleDeleteRule = (id: string) => {
-    setCustomRules((prev) => prev.filter((rule) => rule.id !== id));
+  const handleSaveRule = async (rule: ThermalRule) => {
+    try {
+      const updated = await invoke<ThermalPolicySettings>("upsert_thermal_rule", { rule });
+      setThermalPolicy(updated);
+      setPolicyError(null);
+    } catch (error) {
+      setPolicyError(String(error));
+      console.error("Save Thermal rule failed:", error);
+    }
+  };
+
+  const handleDeleteRule = async (ruleId: string) => {
+    try {
+      const updated = await invoke<ThermalPolicySettings>("delete_thermal_rule", { ruleId });
+      setThermalPolicy(updated);
+      setPolicyError(null);
+    } catch (error) {
+      setPolicyError(String(error));
+      console.error("Delete Thermal rule failed:", error);
+    }
   };
 
   const temperatures = telemetry?.temperatures.status === "available" ? telemetry.temperatures.value : null;
@@ -143,11 +176,17 @@ export function App() {
 
             {sensors.length > 0 && <CoreBreakdown sensors={sensors} unit={settings.tempUnit} />}
 
+            {policyError && (
+              <div className="px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[10px] text-rose-200">
+                Thermal policy update failed: {policyError}
+              </div>
+            )}
+
             <FanRuleManager
-              activePreset={settings.activePreset}
-              customRules={customRules}
+              activePreset={thermalPolicy.mode}
+              customRules={thermalPolicy.rules}
               sensors={sensors}
-              onSelectPreset={(preset) => setSettings((previous) => ({ ...previous, activePreset: preset }))}
+              onSelectPreset={handleSelectPolicyMode}
               onSaveRule={handleSaveRule}
               onDeleteRule={handleDeleteRule}
             />
@@ -168,7 +207,9 @@ export function App() {
                   fan={fan}
                   onSetSpeed={handleSetFanSpeed}
                   onSetMode={handleSetFanMode}
-                  actuationAvailable={fanActuationStatus === "ready"}
+                  actuationAvailable={
+                    fanActuationStatus === "ready" && thermalPolicy.mode === "system_auto"
+                  }
                 />
               ))}
 
