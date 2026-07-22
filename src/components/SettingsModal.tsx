@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 interface SettingsModalProps {
   preferences: ApplicationPreferences;
-  fanActuationStatus: "not_registered" | "requires_approval" | "ready" | "unavailable";
+  fanActuationStatus: "not_registered" | "ready" | "unavailable";
   onUpdatePreferences: (change: ApplicationPreferenceChange) => void;
 }
 

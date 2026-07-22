@@ -10,7 +10,6 @@ pub const SOCKET_PATH: &str = "/var/run/superfan/fan-actuation.sock";
 #[serde(rename_all = "snake_case")]
 pub enum ActuationStatus {
     NotRegistered,
-    RequiresApproval,
     Ready,
     Unavailable,
 }
@@ -65,8 +64,8 @@ mod tests {
     #[test]
     fn actuation_status_serializes_for_the_frontend() {
         assert_eq!(
-            serde_json::to_string(&ActuationStatus::RequiresApproval).unwrap(),
-            "\"requires_approval\""
+            serde_json::to_string(&ActuationStatus::NotRegistered).unwrap(),
+            "\"not_registered\""
         );
     }
 }

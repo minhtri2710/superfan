@@ -40,7 +40,6 @@ fn fan_actuation_status() -> ActuationStatus {
 fn telemetry_snapshot() -> HardwareTelemetrySnapshot {
     let fan_actuation_status = match client::status() {
         ActuationStatus::NotRegistered => FanActuationStatus::NotRegistered,
-        ActuationStatus::RequiresApproval => FanActuationStatus::RequiresApproval,
         ActuationStatus::Ready => FanActuationStatus::Ready,
         ActuationStatus::Unavailable => FanActuationStatus::Unavailable,
     };

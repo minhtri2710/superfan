@@ -61,7 +61,6 @@ pub struct BatteryReading {
 #[ts(export)]
 pub enum FanActuationStatus {
     NotRegistered,
-    RequiresApproval,
     Ready,
     Unavailable,
 }
