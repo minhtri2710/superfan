@@ -1,20 +1,18 @@
 import React, { useState } from "react";
 import { AppSettings } from "../types";
-import { ShieldCheck, ShieldAlert, ToggleLeft, ToggleRight, Sparkles, Clock, Thermometer, Wrench, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Clock, Thermometer, Wrench, CheckCircle2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface SettingsModalProps {
   settings: AppSettings;
   isHelperInstalled: boolean;
   onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
-  onToggleDemo: (enabled: boolean) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   isHelperInstalled,
   onUpdateSettings,
-  onToggleDemo,
 }) => {
   const [installing, setInstalling] = useState(false);
   const [installMsg, setInstallMsg] = useState<string | null>(null);
@@ -89,28 +87,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <option value={1500}>1.5s (Balanced)</option>
           <option value={2500}>2.5s (Eco)</option>
         </select>
-      </div>
-
-      {/* Demo Mode Toggle */}
-      <div className="glass-card p-3 rounded-xl flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-purple-400" />
-          <div>
-            <div className="text-xs font-semibold text-white">Demo Mode</div>
-            <div className="text-[10px] text-slate-400">Simulate hardware data for UI testing</div>
-          </div>
-        </div>
-
-        <button
-          onClick={() => onToggleDemo(!settings.demoMode)}
-          className="text-slate-300 hover:text-white transition-colors"
-        >
-          {settings.demoMode ? (
-            <ToggleRight className="w-7 h-7 text-cyan-400" />
-          ) : (
-            <ToggleLeft className="w-7 h-7 text-slate-600" />
-          )}
-        </button>
       </div>
 
       {/* Helper Status & Installation */}

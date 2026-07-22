@@ -66,7 +66,6 @@ pub struct TelemetryData {
     pub battery: Option<BatteryReading>,
     pub has_smc_access: bool,
     pub is_helper_installed: bool,
-    pub is_demo_mode: bool,
     pub timestamp: u64,
 }
 
@@ -253,57 +252,7 @@ pub fn get_battery_reading() -> Option<BatteryReading> {
     })
 }
 
-pub fn get_telemetry(demo_mode: bool) -> TelemetryData {
-    if demo_mode {
-        use std::time::SystemTime;
-        let secs = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
-        let cpu_sim = 45.0 + (secs % 30) as f64 * 0.8;
-        let gpu_sim = 42.0 + (secs % 20) as f64 * 0.5;
-
-        return TelemetryData {
-            cpu_temp: Some((cpu_sim * 10.0).round() / 10.0),
-            gpu_temp: Some((gpu_sim * 10.0).round() / 10.0),
-            max_cpu_temp: Some(((cpu_sim + 5.0) * 10.0).round() / 10.0),
-            sensors: vec![
-                SensorReading { key: "Tp01".into(), label: "P-Core 1".into(), value: (cpu_sim * 10.0).round() / 10.0 },
-                SensorReading { key: "Tp05".into(), label: "P-Core 2".into(), value: ((cpu_sim + 1.2) * 10.0).round() / 10.0 },
-                SensorReading { key: "Te05".into(), label: "E-Core 1".into(), value: ((cpu_sim - 3.5) * 10.0).round() / 10.0 },
-                SensorReading { key: "Tg0D".into(), label: "GPU Core".into(), value: (gpu_sim * 10.0).round() / 10.0 },
-            ],
-            fans: vec![
-                FanReading {
-                    id: 0,
-                    label: "Fan 1 (Left)".into(),
-                    speed: 2100 + ((secs % 10) * 50) as i32,
-                    min_speed: 1200,
-                    max_speed: 6000,
-                    target_speed: Some(2500),
-                    mode: "auto".into(),
-                },
-                FanReading {
-                    id: 1,
-                    label: "Fan 2 (Right)".into(),
-                    speed: 2050 + ((secs % 10) * 45) as i32,
-                    min_speed: 1200,
-                    max_speed: 6000,
-                    target_speed: Some(2500),
-                    mode: "auto".into(),
-                },
-            ],
-            battery: Some(BatteryReading {
-                percentage: 88,
-                temperature: 31.5,
-                is_charging: true,
-                cycle_count: 142,
-                power_watts: 18.5,
-            }),
-            has_smc_access: true,
-            is_helper_installed: true,
-            is_demo_mode: true,
-            timestamp: secs,
-        };
-    }
-
+pub fn get_telemetry() -> TelemetryData {
     let has_smc = ensure_smc_open();
     let cpu_temp = get_cpu_temperature();
     let gpu_temp = get_gpu_temperature();
@@ -325,7 +274,6 @@ pub fn get_telemetry(demo_mode: bool) -> TelemetryData {
         battery,
         has_smc_access: has_smc,
         is_helper_installed: false,
-        is_demo_mode: false,
         timestamp: now_secs,
     }
 }

@@ -19,13 +19,9 @@ export function App() {
     tempUnit: "C",
     pollingInterval: 1500,
     launchAtLogin: false,
-    demoMode: true, // default to demo mode for initial UI demonstration
   });
 
   useEffect(() => {
-    // Enable demo mode on backend startup if needed
-    invoke("set_demo_mode", { enabled: settings.demoMode });
-
     // Initial fetch
     invoke<TelemetryData>("fetch_telemetry")
       .then((data) => {
@@ -53,13 +49,6 @@ export function App() {
     };
   }, []);
 
-  const handleToggleDemo = async (enabled: boolean) => {
-    setSettings((prev) => ({ ...prev, demoMode: enabled }));
-    await invoke("set_demo_mode", { enabled });
-    const data = await invoke<TelemetryData>("fetch_telemetry");
-    setTelemetry(data);
-  };
-
   const handleSetFanSpeed = async (fanId: number, rpm: number) => {
     try {
       await invoke("set_fan_speed", { fanId, rpm });
@@ -80,54 +69,22 @@ export function App() {
     invoke("toggle_popover").catch(() => {});
   };
 
-  // Fallback demo data if telemetry is not yet populated
+  // Fallback telemetry structure if not yet populated
   const currentTelemetry: TelemetryData = telemetry || {
-    cpu_temp: 48.5,
-    gpu_temp: 43.2,
-    max_cpu_temp: 52.0,
-    sensors: [
-      { key: "Tp01", label: "P-Core 1", value: 48.5 },
-      { key: "Tp05", label: "P-Core 2", value: 49.7 },
-      { key: "Te05", label: "E-Core 1", value: 45.0 },
-      { key: "Tg0D", label: "GPU Core", value: 43.2 },
-    ],
-    fans: [
-      {
-        id: 0,
-        label: "Fan 1 (Left)",
-        speed: 2150,
-        min_speed: 1200,
-        max_speed: 6000,
-        target_speed: 2500,
-        mode: "auto",
-      },
-      {
-        id: 1,
-        label: "Fan 2 (Right)",
-        speed: 2080,
-        min_speed: 1200,
-        max_speed: 6000,
-        target_speed: 2500,
-        mode: "auto",
-      },
-    ],
-    battery: {
-      percentage: 88,
-      temperature: 31.2,
-      is_charging: true,
-      cycle_count: 142,
-      power_watts: 18.5,
-    },
-    has_smc_access: true,
-    is_helper_installed: true,
-    is_demo_mode: true,
+    cpu_temp: null,
+    gpu_temp: null,
+    max_cpu_temp: null,
+    sensors: [],
+    fans: [],
+    battery: null,
+    has_smc_access: false,
+    is_helper_installed: false,
     timestamp: Date.now(),
   };
 
   return (
     <div className="w-full h-screen glass-panel flex flex-col rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
       <Header
-        isDemoMode={currentTelemetry.is_demo_mode}
         hasAccess={currentTelemetry.has_smc_access}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -141,7 +98,6 @@ export function App() {
             settings={settings}
             isHelperInstalled={currentTelemetry.is_helper_installed}
             onUpdateSettings={(newVal) => setSettings((prev) => ({ ...prev, ...newVal }))}
-            onToggleDemo={handleToggleDemo}
           />
         ) : (
           <>
@@ -156,7 +112,9 @@ export function App() {
             <TemperatureChart history={tempHistory} unit={settings.tempUnit} />
 
             {/* Per-Core Thermal Breakdown */}
-            <CoreBreakdown sensors={currentTelemetry.sensors} unit={settings.tempUnit} />
+            {currentTelemetry.sensors.length > 0 && (
+              <CoreBreakdown sensors={currentTelemetry.sensors} unit={settings.tempUnit} />
+            )}
 
             {/* Fans Section */}
             <div className="space-y-2">
@@ -189,7 +147,7 @@ export function App() {
       <div className="px-3.5 py-2 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-400 bg-slate-950/40">
         <span className="flex items-center gap-1">
           <ShieldCheck className="w-3 h-3 text-emerald-400" />
-          SMC Status: Active
+          SMC Status: {currentTelemetry.has_smc_access ? "Active" : "Scanning"}
         </span>
         <span className="font-mono">SuperFan v1.0.0</span>
       </div>

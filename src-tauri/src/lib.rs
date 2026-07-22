@@ -7,12 +7,11 @@ use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, State, Window,
+    Emitter, Manager, Window,
 };
 
 #[derive(Default)]
 pub struct AppState {
-    pub demo_mode: AtomicBool,
     pub auto_curve_enabled: AtomicBool,
 }
 
@@ -22,25 +21,14 @@ fn check_helper_status() -> bool {
 }
 
 #[tauri::command]
-fn fetch_telemetry(state: State<Arc<AppState>>) -> TelemetryData {
-    let demo = state.demo_mode.load(Ordering::Relaxed);
-    let mut data = get_telemetry(demo);
+fn fetch_telemetry() -> TelemetryData {
+    let mut data = get_telemetry();
     data.is_helper_installed = check_helper_status();
     data
 }
 
 #[tauri::command]
-fn set_demo_mode(enabled: bool, state: State<Arc<AppState>>) -> bool {
-    state.demo_mode.store(enabled, Ordering::Relaxed);
-    enabled
-}
-
-#[tauri::command]
-fn set_fan_speed(fan_id: usize, rpm: i32, state: State<Arc<AppState>>) -> Result<String, String> {
-    if state.demo_mode.load(Ordering::Relaxed) {
-        return Ok(format!("Demo Mode: Simulated set fan {} to {} RPM", fan_id, rpm));
-    }
-
+fn set_fan_speed(fan_id: usize, rpm: i32) -> Result<String, String> {
     let helper_path = "/usr/local/bin/smc-helper";
     if !std::path::Path::new(helper_path).exists() {
         return Err("SMC Helper tool is not installed. Please install it from Settings.".into());
@@ -63,11 +51,7 @@ fn set_fan_speed(fan_id: usize, rpm: i32, state: State<Arc<AppState>>) -> Result
 }
 
 #[tauri::command]
-fn set_fan_mode(fan_id: usize, mode: String, state: State<Arc<AppState>>) -> Result<String, String> {
-    if state.demo_mode.load(Ordering::Relaxed) {
-        return Ok(format!("Demo Mode: Simulated set fan {} to mode {}", fan_id, mode));
-    }
-
+fn set_fan_mode(fan_id: usize, mode: String) -> Result<String, String> {
     let helper_path = "/usr/local/bin/smc-helper";
     if !std::path::Path::new(helper_path).exists() {
         return Err("SMC Helper tool is not installed. Please install it from Settings.".into());
@@ -164,24 +148,22 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             check_helper_status,
             fetch_telemetry,
-            set_demo_mode,
             set_fan_speed,
             set_fan_mode,
             install_helper,
             toggle_popover
         ])
-        .setup(move |app| {
-            let state_clone = app_state.clone();
-            let app_handle = app.handle().clone();
+        .setup(move |_app| {
+            let app_handle = _app.handle().clone();
 
             // Setup Tray Icon
-            let quit_i = MenuItem::with_id(app, "quit", "Quit SuperFan", true, None::<&str>)?;
-            let show_i = MenuItem::with_id(app, "show", "Show SuperFan", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+            let quit_i = MenuItem::with_id(_app, "quit", "Quit SuperFan", true, None::<&str>)?;
+            let show_i = MenuItem::with_id(_app, "show", "Show SuperFan", true, None::<&str>)?;
+            let menu = Menu::with_items(_app, &[&show_i, &quit_i])?;
 
             let _tray = TrayIconBuilder::with_id("superfan-tray")
                 .tooltip("SuperFan - macOS Temperature & Fan Control")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(_app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
@@ -215,20 +197,19 @@ pub fn run() {
                     }
                     _ => {}
                 })
-                .build(app)?;
+                .build(_app)?;
 
             // Telemetry Background Timer Loop (1.5s interval)
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(std::time::Duration::from_millis(1500));
                 loop {
                     interval.tick().await;
-                    let demo = state_clone.demo_mode.load(Ordering::Relaxed);
-                    let mut data = get_telemetry(demo);
+                    let mut data = get_telemetry();
                     data.is_helper_installed = check_helper_status();
 
                     // Evaluate Smart Fan Curve for emergency over-temperature (>85°C)
                     if let Some(cpu_t) = data.cpu_temp {
-                        if cpu_t > 85.0 && check_helper_status() && !demo {
+                        if cpu_t > 85.0 && check_helper_status() {
                             for fan in &data.fans {
                                 if fan.mode == "auto" {
                                     let target_rpm = calculate_smart_curve_rpm(cpu_t, fan.min_speed, fan.max_speed);

@@ -2,7 +2,6 @@ import React from "react";
 import { Flame, Settings, X, ShieldAlert } from "lucide-react";
 
 interface HeaderProps {
-  isDemoMode: boolean;
   hasAccess: boolean;
   activeTab: "overview" | "dashboard" | "settings";
   setActiveTab: (tab: "overview" | "dashboard" | "settings") => void;
@@ -10,7 +9,6 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  isDemoMode,
   hasAccess,
   activeTab,
   setActiveTab,
@@ -28,18 +26,13 @@ export const Header: React.FC<HeaderProps> = ({
         <div>
           <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
             SuperFan
-            {isDemoMode && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                DEMO
-              </span>
-            )}
           </h1>
           <p className="text-[10px] text-slate-400 font-medium">macOS Fan Control</p>
         </div>
       </div>
 
       <div className="flex items-center gap-1">
-        {!hasAccess && !isDemoMode && (
+        {!hasAccess && (
           <div
             title="SMC Access Limited"
             className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-500/20 text-red-300 text-[10px] border border-red-500/30 mr-1"

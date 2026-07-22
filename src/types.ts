@@ -31,7 +31,6 @@ export interface TelemetryData {
   battery: BatteryReading | null;
   has_smc_access: boolean;
   is_helper_installed: boolean;
-  is_demo_mode: boolean;
   timestamp: number;
 }
 
@@ -39,5 +38,4 @@ export interface AppSettings {
   tempUnit: "C" | "F";
   pollingInterval: number; // in ms
   launchAtLogin: boolean;
-  demoMode: boolean;
 }
