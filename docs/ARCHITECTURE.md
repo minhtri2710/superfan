@@ -1,67 +1,62 @@
 # SuperFan Developer & Architecture Guide
 
-Tài liệu hướng dẫn phát triển và kiến trúc chuyên sâu cho dự án **SuperFan**.
+## System shape
 
----
-
-## 🏗️ Tổng quan Kiến trúc Hệ thống
-
-```
-+-----------------------------------------------------------------------+
-|                        React 19 Frontend (Vite)                       |
-|  [Header] [TemperatureGauge] [TemperatureChart] [FanRuleManager] ...  |
-+-----------------------------------+-----------------------------------+
-                                    | Tauri v2 IPC (Events & Commands)
-+-----------------------------------v-----------------------------------+
-|                        Rust Backend (Tauri v2)                        |
-|  - Telemetry Loop (1.5s timer)    - IPC Command Handlers             |
-|  - Smart Fan Curve Evaluator      - FFI Binding Engine (`smc/mod.rs`) |
-+------------------+--------------------------------+-------------------+
-                   | Direct IOKit FFI               | Command Execution
-+------------------v------------------+   +---------v-------------------+
-| macOS Kernel / IOKit / SMC Read     |   | Privileged Helper Tool      |
-| - IOServiceMatching("AppleSMC")     |   | /usr/local/bin/smc-helper   |
-| - AppleSmartBattery & PowerSources  |   | (setuid root 4755)          |
-+-------------------------------------+   +-----------------------------+
+```text
+React UI
+  └─ generated TypeScript interfaces
+       │ Tauri commands and telemetry events
+       ▼
+Rust backend
+  ├─ Hardware telemetry snapshot module
+  │    ├─ SMC adapter
+  │    ├─ IOKit adapter
+  │    └─ fixture adapter for tests
+  ├─ Thermal policy module
+  │    └─ Hardware telemetry snapshot → Fan plan
+  └─ Fan actuation module
+       └─ Unix socket → privileged launchd daemon → Apple SMC
 ```
 
----
+The Hardware telemetry snapshot module normalizes temperatures, fan measurements, battery measurements, and availability. Its interface uses explicit Celsius, RPM, percent, watts, and capture-time fields. Each hardware group reports `available`, `not_present`, or `unavailable`; the module does not invent display values.
 
-## 🔑 Bảng Tra cứu SMC Keys & IOKit Telemetry
+The Thermal policy module owns presets and custom rules in Rust. It evaluates one Hardware telemetry snapshot at a time and produces a Fan plan. Policy settings persist through Tauri store. TypeScript interfaces are generated from the Rust contracts with `npm run generate:types`.
 
-### 1. Cảm biến Nhiệt độ (Temperature Sensors)
-- **Apple Silicon (M1/M2/M3/M4)**:
-  - `Tp01`, `Tp05`, `Tp09`, `Tp0D`,...: CPU Performance Cores (`P-Core`).
-  - `Te05`, `Te0L`, `Te0P`,...: CPU Efficiency Cores (`E-Core`).
-  - `Tg05`, `Tg0D`, `Tg0L`, `Tg0T`,...: GPU Cluster Sensors (`GPU Core`).
-- **Intel Macs**:
-  - `TC0P`, `TCXC`, `TC0E`, `TC0D`: CPU Proximity & Core sensors.
-  - `TG0P`, `TG0D`, `TGDD`: GPU Proximity sensors.
+The Fan actuation module owns privileged writes. The application communicates with a launchd daemon through a narrow Unix socket protocol. The daemon authorizes the active console user, validates targets against hardware ranges, and restores all fans to System Auto when communication or its heartbeat lease fails.
 
-### 2. Quạt & Điều khiển Tốc độ (Fan Control Keys)
-- `F0Ac`, `F1Ac`: Actual Fan Speed (RPM).
-- `F0Mn`, `F1Mn`: Minimum Fan Speed (RPM).
-- `F0Mx`, `F1Mx`: Maximum Fan Speed (RPM).
-- `F0Tg`, `F1Tg`: Target Fan Speed (RPM).
-- `F0Md`, `F1Md`: Fan Control Mode (`0` = Auto/System, `1` = Manual/Target).
+## Thermal policy behavior
 
-### 3. Thông số Pin & Điện năng (Battery Telemetry)
-- **`IOPSCopyPowerSourcesInfo` / `IOPSGetPowerSourceDescription`**: Lấy `% Pin` (`kIOPSCurrentCapacityKey`) và `Trạng thái sạc` (`kIOPSIsChargingKey`).
-- **`AppleSmartBattery` (IORegistry)**:
-  - `CycleCount`: Số chu kỳ sạc.
-  - `Temperature`: Nhiệt độ pin (đơn vị 0.1 Kelvin $\rightarrow$ chuyển đổi $(T / 10) - 273.15 = ^\circ\text{C}$).
-  - `InstantAmperage` / `Amperage`: Dòng điện (mA).
-  - `Voltage`: Điện áp (mV).
-  - `PowerWatts`: $P = V \times I$ (Watts).
+- System Auto always produces a System Auto Fan plan.
+- Missing, unavailable, or more than five-second-old hardware data produces System Auto.
+- Quiet uses 50–85°C and 20–75% fan output.
+- Performance uses 40–75°C and 40–100% fan output.
+- Custom rules can target CPU, GPU, a sensor key, or the hottest available temperature.
+- When multiple rules apply, the highest requested fan target wins.
+- RPM increases apply immediately.
+- RPM decreases require a 2°C temperature drop and are limited to 400 RPM per second.
+- Direct manual controls are disabled while Quiet, Performance, or Custom policy is active, preserving one writer for Fan actuation.
 
----
+## Tauri commands
 
-## 🛠️ IPC Commands (Rust Backend Handlers)
+| Command | Purpose |
+| --- | --- |
+| `fetch_telemetry` | Return the current Hardware telemetry snapshot. |
+| `thermal_policy_settings` | Return persisted Thermal policy settings. |
+| `select_thermal_policy_mode` | Select System Auto, Quiet, Performance, or Custom. |
+| `upsert_thermal_rule` | Validate and persist a custom Thermal rule. |
+| `delete_thermal_rule` | Delete and persist a custom Thermal rule. |
+| `fan_actuation_status` | Report launchd Fan actuation readiness. |
+| `set_fan_speed` | Apply a direct manual RPM target while Thermal policy is in System Auto. |
+| `set_fan_mode` | Select direct manual behavior or System Auto while automatic policy is inactive. |
+| `register_fan_actuation_service` | Register the privileged launchd daemon with macOS. |
+| `open_fan_actuation_settings` | Open macOS Login Items settings for approval. |
+| `toggle_autostart` | Enable or disable launch at login. |
+| `toggle_popover` | Show or hide the application window. |
 
-| Command | Tham số | Mô tả |
-| :--- | :--- | :--- |
-| `fetch_telemetry` | `()` | Đọc toàn bộ chỉ số phần cứng hiện tại |
-| `set_fan_speed` | `fan_id: usize, rpm: i32` | Đặt tốc độ quạt thủ công qua `smc-helper set <fan_id> <rpm>` |
-| `set_fan_mode` | `fan_id: usize, mode: String` | Đặt chế độ quạt (`"auto"` / `"manual"`) |
-| `install_helper` | `()` | Cài đặt `smc-helper` vào `/usr/local/bin/` với quyền `setuid root` |
-| `toggle_popover` | `()` | Ẩn/Hiện cửa sổ ứng dụng khi click Tray Icon |
+## SMC and IOKit readings
+
+Temperature adapters probe known Apple Silicon and Intel SMC keys. Fan measurements use `F*Ac`, `F*Mn`, `F*Mx`, `F*Tg`, and `F*Md`. Battery measurements use IOPowerSources and AppleSmartBattery properties. Unreadable optional measurements remain absent rather than receiving fallback values.
+
+## Fail-safe authority
+
+macOS remains the fail-safe authority through System Auto. Thermal policy evaluation, persistence, socket errors, stale telemetry, unavailable hardware, application exit, daemon restart, and heartbeat timeout must never leave an unowned manual Fan plan active.
