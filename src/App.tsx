@@ -119,6 +119,7 @@ export function App() {
         {activeTab === "settings" ? (
           <SettingsModal
             settings={settings}
+            isHelperInstalled={currentTelemetry.is_helper_installed}
             onUpdateSettings={(newVal) => setSettings((prev) => ({ ...prev, ...newVal }))}
             onToggleDemo={handleToggleDemo}
           />

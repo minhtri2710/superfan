@@ -1,18 +1,37 @@
-import React from "react";
+import React, { useState } from "react";
 import { AppSettings } from "../types";
-import { ShieldCheck, ToggleLeft, ToggleRight, Sparkles, Clock, Thermometer } from "lucide-react";
+import { ShieldCheck, ShieldAlert, ToggleLeft, ToggleRight, Sparkles, Clock, Thermometer, Wrench, CheckCircle2 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 
 interface SettingsModalProps {
   settings: AppSettings;
+  isHelperInstalled: boolean;
   onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
   onToggleDemo: (enabled: boolean) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
+  isHelperInstalled,
   onUpdateSettings,
   onToggleDemo,
 }) => {
+  const [installing, setInstalling] = useState(false);
+  const [installMsg, setInstallMsg] = useState<string | null>(null);
+
+  const handleInstallHelper = async () => {
+    setInstalling(true);
+    setInstallMsg("Prompting for admin privileges...");
+    try {
+      const result = await invoke<string>("install_helper");
+      setInstallMsg(result);
+    } catch (err: any) {
+      setInstallMsg(`Error: ${err}`);
+    } finally {
+      setInstalling(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3 p-4">
       <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Application Settings</h2>
@@ -64,7 +83,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <select
           value={settings.pollingInterval}
           onChange={(e) => onUpdateSettings({ pollingInterval: Number(e.target.value) })}
-          className="bg-slate-900/80 border border-white/10 text-white text-xs rounded-lg px-2 py-1 outline-none font-mono"
+          className="bg-slate-900/80 border border-white/10 text-white text-xs rounded-lg px-2 py-1 outline-none font-mono cursor-pointer"
         >
           <option value={1000}>1.0s (Fast)</option>
           <option value={1500}>1.5s (Balanced)</option>
@@ -94,19 +113,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </button>
       </div>
 
-      {/* Helper Status */}
-      <div className="glass-card p-3 rounded-xl flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <div>
-            <div className="text-xs font-semibold text-white">SMC Privileged Helper</div>
-            <div className="text-[10px] text-slate-400">Required for manual fan speed modification</div>
+      {/* Helper Status & Installation */}
+      <div className="glass-card p-3 rounded-xl flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {isHelperInstalled ? (
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+            )}
+            <div>
+              <div className="text-xs font-semibold text-white">SMC Privileged Helper</div>
+              <div className="text-[10px] text-slate-400">
+                {isHelperInstalled
+                  ? "Installed at /usr/local/bin/smc-helper"
+                  : "Required for manual fan speed modification"}
+              </div>
+            </div>
           </div>
+
+          <button
+            onClick={handleInstallHelper}
+            disabled={installing}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md ${
+              isHelperInstalled
+                ? "bg-slate-800 text-slate-300 hover:bg-slate-700 border border-white/10"
+                : "bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-orange-500/20"
+            }`}
+          >
+            <Wrench className="w-3 h-3" />
+            {installing ? "Installing..." : isHelperInstalled ? "Reinstall" : "Install Helper"}
+          </button>
         </div>
 
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
-          Active
-        </span>
+        {installMsg && (
+          <div className="mt-1 p-2 rounded-lg bg-slate-900/60 border border-white/10 text-[10px] font-mono text-slate-300 flex items-start gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+            <span>{installMsg}</span>
+          </div>
+        )}
       </div>
     </div>
   );

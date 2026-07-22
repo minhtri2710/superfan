@@ -1,6 +1,7 @@
 pub mod smc;
 
 use smc::{get_telemetry, TelemetryData};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{
@@ -15,9 +16,16 @@ pub struct AppState {
 }
 
 #[tauri::command]
+fn check_helper_status() -> bool {
+    std::path::Path::new("/usr/local/bin/smc-helper").exists()
+}
+
+#[tauri::command]
 fn fetch_telemetry(state: State<Arc<AppState>>) -> TelemetryData {
     let demo = state.demo_mode.load(Ordering::Relaxed);
-    get_telemetry(demo)
+    let mut data = get_telemetry(demo);
+    data.is_helper_installed = check_helper_status();
+    data
 }
 
 #[tauri::command]
@@ -27,14 +35,85 @@ fn set_demo_mode(enabled: bool, state: State<Arc<AppState>>) -> bool {
 }
 
 #[tauri::command]
-fn set_fan_speed(fan_id: usize, rpm: i32) -> Result<String, String> {
-    // Helper tool integration or SMC direct write
-    Ok(format!("Set fan {} target speed to {} RPM", fan_id, rpm))
+fn set_fan_speed(fan_id: usize, rpm: i32, state: State<Arc<AppState>>) -> Result<String, String> {
+    if state.demo_mode.load(Ordering::Relaxed) {
+        return Ok(format!("Demo Mode: Simulated set fan {} to {} RPM", fan_id, rpm));
+    }
+
+    let helper_path = "/usr/local/bin/smc-helper";
+    if !std::path::Path::new(helper_path).exists() {
+        return Err("SMC Helper tool is not installed. Please install it from Settings.".into());
+    }
+
+    let output = Command::new(helper_path)
+        .arg("set")
+        .arg(fan_id.to_string())
+        .arg(rpm.to_string())
+        .output()
+        .map_err(|e| format!("Failed to execute helper: {}", e))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(stdout.to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Helper error: {}", stderr))
+    }
 }
 
 #[tauri::command]
-fn set_fan_mode(fan_id: usize, mode: String) -> Result<String, String> {
-    Ok(format!("Set fan {} mode to {}", fan_id, mode))
+fn set_fan_mode(fan_id: usize, mode: String, state: State<Arc<AppState>>) -> Result<String, String> {
+    if state.demo_mode.load(Ordering::Relaxed) {
+        return Ok(format!("Demo Mode: Simulated set fan {} to mode {}", fan_id, mode));
+    }
+
+    let helper_path = "/usr/local/bin/smc-helper";
+    if !std::path::Path::new(helper_path).exists() {
+        return Err("SMC Helper tool is not installed. Please install it from Settings.".into());
+    }
+
+    let mut cmd = Command::new(helper_path);
+    if mode == "auto" {
+        cmd.arg("auto").arg(fan_id.to_string());
+    } else {
+        cmd.arg("set").arg(fan_id.to_string()).arg("2500");
+    }
+
+    let output = cmd.output().map_err(|e| format!("Failed to execute helper: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+fn install_helper() -> Result<String, String> {
+    let out_dir = match std::env::var("OUT_DIR") {
+        Ok(dir) => dir,
+        Err(_) => "/tmp".to_string(),
+    };
+    let built_helper = format!("{}/smc-helper", out_dir);
+    
+    // AppleScript command to prompt for admin password once and setuid
+    let script = format!(
+        "do shell script \"mkdir -p /usr/local/bin && cp '{}' /usr/local/bin/smc-helper && chown root:wheel /usr/local/bin/smc-helper && chmod 4755 /usr/local/bin/smc-helper\" with administrator privileges",
+        built_helper
+    );
+
+    let output = Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .output()
+        .map_err(|e| format!("Admin authentication failed: {}", e))?;
+
+    if output.status.success() {
+        Ok("SMC Helper successfully installed with root privileges.".into())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Installation failed: {}", stderr))
+    }
 }
 
 #[tauri::command]
@@ -61,10 +140,12 @@ pub fn run() {
         .plugin(tauri_plugin_positioner::init())
         .manage(app_state.clone())
         .invoke_handler(tauri::generate_handler![
+            check_helper_status,
             fetch_telemetry,
             set_demo_mode,
             set_fan_speed,
             set_fan_mode,
+            install_helper,
             toggle_popover
         ])
         .setup(move |app| {
@@ -120,7 +201,8 @@ pub fn run() {
                 loop {
                     interval.tick().await;
                     let demo = state_clone.demo_mode.load(Ordering::Relaxed);
-                    let data = get_telemetry(demo);
+                    let mut data = get_telemetry(demo);
+                    data.is_helper_installed = check_helper_status();
 
                     // Update tray title if CPU temp is available
                     if let Some(tray) = app_handle.tray_by_id("superfan-tray") {
