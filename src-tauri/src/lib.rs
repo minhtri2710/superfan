@@ -1,4 +1,5 @@
 pub mod fan_actuation;
+pub mod hardware_telemetry;
 pub mod smc;
 
 use fan_actuation::client::{self, ActuationStatus};
