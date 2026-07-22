@@ -49,10 +49,15 @@ jobs:
         run: |
           scripts/verify-fan-actuation-bundle.sh src-tauri/target/universal-apple-darwin/release/bundle/macos/SuperFan.app
 
-      - name: Compress SuperFan.app
+      - name: Package App (.app.tar.gz & .dmg)
         run: |
           cd src-tauri/target/universal-apple-darwin/release/bundle/macos
           tar -czvf SuperFan-macOS-Universal.app.tar.gz SuperFan.app
+          mkdir -p ../dmg
+          if ! ls ../dmg/*.dmg 1> /dev/null 2>&1; then
+            echo "Generating DMG with hdiutil..."
+            hdiutil create -volname "SuperFan" -srcfolder SuperFan.app -ov -format UDZO ../dmg/SuperFan-macOS-Universal.dmg
+          fi
 
       - name: Upload Build Artifacts (.app.tar.gz & .dmg)
         uses: actions/upload-artifact@v4

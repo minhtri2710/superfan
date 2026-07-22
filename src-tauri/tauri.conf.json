@@ -31,7 +31,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["app", "dmg"],
     "macOS": {
       "infoPlist": "Info.plist",
       "minimumSystemVersion": "13.0",
