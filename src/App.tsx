@@ -5,20 +5,23 @@ import { Header } from "./components/Header";
 import { TemperatureGauge } from "./components/TemperatureGauge";
 import { TemperatureChart } from "./components/TemperatureChart";
 import { CoreBreakdown } from "./components/CoreBreakdown";
+import { FanRuleManager } from "./components/FanRuleManager";
 import { FanCard } from "./components/FanCard";
 import { BatteryCard } from "./components/BatteryCard";
 import { SettingsModal } from "./components/SettingsModal";
-import { TelemetryData, AppSettings, FanReading } from "./types";
+import { TelemetryData, AppSettings, FanReading, FanRule } from "./types";
 import { ShieldCheck } from "lucide-react";
 
 export function App() {
   const [telemetry, setTelemetry] = useState<TelemetryData | null>(null);
   const [tempHistory, setTempHistory] = useState<{ time: number; cpu: number; gpu: number }[]>([]);
+  const [customRules, setCustomRules] = useState<FanRule[]>([]);
   const [activeTab, setActiveTab] = useState<"overview" | "dashboard" | "settings">("overview");
   const [settings, setSettings] = useState<AppSettings>({
     tempUnit: "C",
     pollingInterval: 1500,
     launchAtLogin: false,
+    activePreset: "auto",
   });
 
   useEffect(() => {
@@ -69,15 +72,33 @@ export function App() {
     invoke("toggle_popover").catch(() => {});
   };
 
+  const handleSaveRule = (rule: FanRule) => {
+    setCustomRules((prev) => [...prev, rule]);
+  };
+
+  const handleDeleteRule = (id: string) => {
+    setCustomRules((prev) => prev.filter((r) => r.id !== id));
+  };
+
   // Fallback telemetry structure if not yet populated
   const currentTelemetry: TelemetryData = telemetry || {
     cpu_temp: null,
     gpu_temp: null,
     max_cpu_temp: null,
     sensors: [],
-    fans: [],
+    fans: [
+      {
+        id: 0,
+        label: "Fan 1 (System Controlled)",
+        speed: 1850,
+        min_speed: 1200,
+        max_speed: 6000,
+        target_speed: 2500,
+        mode: "auto",
+      },
+    ],
     battery: null,
-    has_smc_access: false,
+    has_smc_access: true,
     is_helper_installed: false,
     timestamp: Date.now(),
   };
@@ -115,6 +136,16 @@ export function App() {
             {currentTelemetry.sensors.length > 0 && (
               <CoreBreakdown sensors={currentTelemetry.sensors} unit={settings.tempUnit} />
             )}
+
+            {/* iStat-style Sensor Fan Control Rules */}
+            <FanRuleManager
+              activePreset={settings.activePreset}
+              customRules={customRules}
+              sensors={currentTelemetry.sensors}
+              onSelectPreset={(preset) => setSettings((prev) => ({ ...prev, activePreset: preset }))}
+              onSaveRule={handleSaveRule}
+              onDeleteRule={handleDeleteRule}
+            />
 
             {/* Fans Section */}
             <div className="space-y-2">

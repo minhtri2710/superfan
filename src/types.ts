@@ -22,6 +22,17 @@ export interface BatteryReading {
   power_watts: number;
 }
 
+export interface FanRule {
+  id: string;
+  name: string;
+  targetSensor: "hottest" | "cpu" | "gpu" | string;
+  lowTemp: number;
+  highTemp: number;
+  minFanPercent: number;
+  maxFanPercent: number;
+  active: boolean;
+}
+
 export interface TelemetryData {
   cpu_temp: number | null;
   gpu_temp: number | null;
@@ -38,4 +49,5 @@ export interface AppSettings {
   tempUnit: "C" | "F";
   pollingInterval: number; // in ms
   launchAtLogin: boolean;
+  activePreset: "auto" | "quiet" | "performance" | "custom";
 }
