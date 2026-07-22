@@ -1,6 +1,6 @@
 [package]
 name = "superfan"
-version = "0.1.0"
+version = "1.0.0"
 description = "SuperFan - High-performance Fan Control & Temperature Monitor for macOS"
 authors = ["beowulf"]
 edition = "2021"
