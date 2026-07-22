@@ -9,6 +9,7 @@ pub struct ThermalPolicyRuntime {
     evaluator: ThermalPolicyEvaluator,
     applied_targets: BTreeMap<usize, i32>,
     manual_plan_active: bool,
+    system_auto_confirmed: bool,
 }
 
 impl ThermalPolicyRuntime {
@@ -24,11 +25,12 @@ impl ThermalPolicyRuntime {
     }
 
     pub fn restore_system_auto(&mut self) -> Result<(), String> {
-        if self.manual_plan_active {
+        if self.manual_plan_active || !self.system_auto_confirmed {
             client::restore_all()?;
         }
         self.applied_targets.clear();
         self.manual_plan_active = false;
+        self.system_auto_confirmed = true;
         Ok(())
     }
 
@@ -47,6 +49,7 @@ impl ThermalPolicyRuntime {
                         let _ = client::restore_all();
                         self.applied_targets.clear();
                         self.manual_plan_active = false;
+                        self.system_auto_confirmed = false;
                         return Err(error);
                     }
                 }
@@ -56,10 +59,12 @@ impl ThermalPolicyRuntime {
                     .map(|target| (target.fan_id, target.rpm))
                     .collect();
                 self.manual_plan_active = true;
+                self.system_auto_confirmed = false;
                 if let Err(error) = client::heartbeat() {
                     let _ = client::restore_all();
                     self.applied_targets.clear();
                     self.manual_plan_active = false;
+                    self.system_auto_confirmed = false;
                     return Err(error);
                 }
                 Ok(())

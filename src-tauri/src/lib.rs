@@ -84,7 +84,7 @@ fn select_thermal_policy_mode<R: tauri::Runtime>(
         updated
     };
     if settings.mode == ThermalPolicyMode::SystemAuto {
-        client::restore_all()?;
+        let _ = client::restore_all();
     }
     Ok(settings)
 }
@@ -279,6 +279,10 @@ pub fn run() {
                         policy_runtime.evaluate_and_apply(&settings, &data, now_unix_ms);
                     if policy_result.is_err() {
                         let _ = policy_runtime.restore_system_auto();
+                    } else if settings.mode == ThermalPolicyMode::SystemAuto
+                        && data.fan_actuation_status == FanActuationStatus::Ready
+                    {
+                        let _ = client::heartbeat();
                     }
 
                     // Update tray title if CPU temp is available

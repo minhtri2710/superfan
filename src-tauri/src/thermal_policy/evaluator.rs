@@ -81,18 +81,21 @@ impl ThermalPolicyEvaluator {
         temperature_celsius: f64,
         now_unix_ms: u64,
     ) -> i32 {
+        if let Some(previous) = self.previous_targets.get(&fan_id).copied() {
+            if requested_rpm < previous.rpm
+                && temperature_celsius > previous.temperature_celsius - DECREASE_HYSTERESIS_CELSIUS
+            {
+                return previous.rpm;
+            }
+        }
+
         let rpm = match self.previous_targets.get(&fan_id).copied() {
             Some(previous) if requested_rpm < previous.rpm => {
-                if temperature_celsius > previous.temperature_celsius - DECREASE_HYSTERESIS_CELSIUS
-                {
-                    previous.rpm
-                } else {
-                    let elapsed_seconds =
-                        now_unix_ms.saturating_sub(previous.evaluated_at_unix_ms) as f64 / 1_000.0;
-                    let maximum_decrease =
-                        (MAX_DECREASE_RPM_PER_SECOND * elapsed_seconds).round() as i32;
-                    requested_rpm.max(previous.rpm - maximum_decrease)
-                }
+                let elapsed_seconds =
+                    now_unix_ms.saturating_sub(previous.evaluated_at_unix_ms) as f64 / 1_000.0;
+                let maximum_decrease =
+                    (MAX_DECREASE_RPM_PER_SECOND * elapsed_seconds).round() as i32;
+                requested_rpm.max(previous.rpm - maximum_decrease)
             }
             _ => requested_rpm,
         };
@@ -380,7 +383,41 @@ mod tests {
             FanPlan::Targets {
                 targets: vec![FanTarget {
                     fan_id: 0,
-                    rpm: 4600
+                    rpm: 4200
+                }]
+            }
+        );
+    }
+
+    #[test]
+    fn gradual_cooling_does_not_move_the_hysteresis_reference() {
+        let mut evaluator = ThermalPolicyEvaluator::default();
+        let settings = ThermalPolicySettings {
+            mode: ThermalPolicyMode::Custom,
+            rules: vec![rule("cpu", ThermalTarget::Cpu, 40.0, 80.0, 0, 100)],
+        };
+
+        let _ = evaluator.evaluate(&settings, &snapshot(Some(80.0), None, None, 1_000), 1_000);
+        let blocked =
+            evaluator.evaluate(&settings, &snapshot(Some(79.0), None, None, 2_000), 2_000);
+        let decreased =
+            evaluator.evaluate(&settings, &snapshot(Some(78.0), None, None, 3_000), 3_000);
+
+        assert_eq!(
+            blocked,
+            FanPlan::Targets {
+                targets: vec![FanTarget {
+                    fan_id: 0,
+                    rpm: 5000
+                }]
+            }
+        );
+        assert_eq!(
+            decreased,
+            FanPlan::Targets {
+                targets: vec![FanTarget {
+                    fan_id: 0,
+                    rpm: 4800
                 }]
             }
         );
