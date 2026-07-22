@@ -1,5 +1,6 @@
 import React from "react";
 import { Flame, Settings, X, ShieldAlert } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface HeaderProps {
   hasAccess: boolean;
@@ -14,12 +15,20 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   onHideWindow,
 }) => {
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only initiate window drag on left click and when not clicking on action buttons
+    if (e.button === 0 && !(e.target as HTMLElement).closest("button")) {
+      getCurrentWindow().startDragging().catch(() => {});
+    }
+  };
+
   return (
     <div
       data-tauri-drag-region
+      onMouseDown={handleMouseDown}
       className="flex items-center justify-between px-4 py-3 border-b border-white/10 select-none cursor-grab active:cursor-grabbing"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 pointer-events-none">
         <div className="p-1.5 rounded-lg bg-gradient-to-tr from-amber-500 to-red-500 shadow-lg shadow-orange-500/20">
           <Flame className="w-4 h-4 text-white animate-pulse" />
         </div>
@@ -35,7 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
         {!hasAccess && (
           <div
             title="SMC Access Limited"
-            className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-500/20 text-red-300 text-[10px] border border-red-500/30 mr-1"
+            className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-500/20 text-red-300 text-[10px] border border-red-500/30 mr-1 pointer-events-none"
           >
             <ShieldAlert className="w-3 h-3" />
             Limited

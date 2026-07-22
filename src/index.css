@@ -1,26 +1,35 @@
 @import "tailwindcss";
 
+html, body, #root {
+  background-color: transparent !important;
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
 @layer base {
   body {
-    @apply bg-slate-950/90 text-slate-100 font-sans select-none overflow-hidden antialiased;
+    @apply text-slate-100 font-sans select-none antialiased;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   }
 }
 
 /* Glassmorphism utility classes */
 .glass-panel {
-  background: rgba(15, 23, 42, 0.65);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  background: rgba(13, 18, 30, 0.92);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
 }
 
 .glass-card {
-  background: rgba(30, 41, 59, 0.45);
+  background: rgba(26, 36, 56, 0.55);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-card-hover {
@@ -28,8 +37,8 @@
 }
 
 .glass-card-hover:hover {
-  background: rgba(47, 63, 86, 0.55);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(38, 52, 78, 0.65);
+  border-color: rgba(255, 255, 255, 0.18);
   transform: translateY(-1px);
 }
 
