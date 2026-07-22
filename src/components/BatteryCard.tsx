@@ -19,7 +19,7 @@ export const BatteryCard: React.FC<BatteryCardProps> = ({ battery, unit }) => {
     <div className="glass-card p-3 rounded-xl flex items-center justify-between text-slate-300">
       <div className="flex items-center gap-2.5">
         <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          {battery.is_charging ? (
+          {battery.is_charging === true ? (
             <BatteryCharging className="w-4 h-4 animate-pulse" />
           ) : (
             <Battery className="w-4 h-4" />
@@ -27,27 +27,37 @@ export const BatteryCard: React.FC<BatteryCardProps> = ({ battery, unit }) => {
         </div>
         <div>
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-bold text-white font-mono">{battery.percentage}%</span>
+            <span className="text-sm font-bold text-white font-mono">
+              {battery.charge_percent === null ? "--" : `${battery.charge_percent}%`}
+            </span>
             <span className="text-[10px] text-slate-400">
-              {battery.is_charging ? "Charging" : "Discharging"}
+              {battery.is_charging === null
+                ? "State unavailable"
+                : battery.is_charging
+                  ? "Charging"
+                  : "Discharging"}
             </span>
           </div>
           <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
             <span className="flex items-center gap-0.5">
               <Thermometer className="w-3 h-3 text-cyan-400" />
-              {formatTemp(battery.temperature)}
+              {battery.temperature_celsius === null
+                ? "--"
+                : formatTemp(battery.temperature_celsius)}
             </span>
             <span>•</span>
             <span className="flex items-center gap-0.5">
               <Zap className="w-3 h-3 text-amber-400" />
-              {battery.power_watts.toFixed(1)}W
+              {battery.power_watts === null ? "--" : `${battery.power_watts.toFixed(1)}W`}
             </span>
           </div>
         </div>
       </div>
 
       <div className="text-right text-[10px] text-slate-400">
-        <div className="font-mono text-slate-300 font-semibold">{battery.cycle_count} cycles</div>
+        <div className="font-mono text-slate-300 font-semibold">
+          {battery.cycle_count === null ? "-- cycles" : `${battery.cycle_count} cycles`}
+        </div>
         <div>Health Nominal</div>
       </div>
     </div>

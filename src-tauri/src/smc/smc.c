@@ -679,24 +679,38 @@ int fetch_battery_info(BatteryInfoC *info)
     memset(info, 0, sizeof(BatteryInfoC));
 
     CFTypeRef snapshot = IOPSCopyPowerSourcesInfo();
-    if (!snapshot) return 0;
+    if (!snapshot) return -1;
 
     CFArrayRef sources = IOPSCopyPowerSourcesList(snapshot);
-    if (!sources || CFArrayGetCount(sources) == 0) {
-        if (sources) CFRelease(sources);
+    if (!sources) {
+        CFRelease(snapshot);
+        return -1;
+    }
+    if (CFArrayGetCount(sources) == 0) {
+        CFRelease(sources);
         CFRelease(snapshot);
         return 0;
     }
 
     CFDictionaryRef ps = IOPSGetPowerSourceDescription(snapshot, CFArrayGetValueAtIndex(sources, 0));
-    if (ps) {
+    if (!ps) {
+        CFRelease(sources);
+        CFRelease(snapshot);
+        return -1;
+    }
+    {
         info->has_battery = 1;
         
         CFNumberRef cap = (CFNumberRef)CFDictionaryGetValue(ps, CFSTR(kIOPSCurrentCapacityKey));
-        if (cap) CFNumberGetValue(cap, kCFNumberIntType, &info->percentage);
+        if (cap && CFNumberGetValue(cap, kCFNumberIntType, &info->percentage)) {
+            info->has_percentage = 1;
+        }
 
         CFBooleanRef charging = (CFBooleanRef)CFDictionaryGetValue(ps, CFSTR(kIOPSIsChargingKey));
-        if (charging) info->is_charging = CFBooleanGetValue(charging) ? 1 : 0;
+        if (charging) {
+            info->is_charging = CFBooleanGetValue(charging) ? 1 : 0;
+            info->has_charging = 1;
+        }
     }
 
     CFRelease(sources);
@@ -706,15 +720,19 @@ int fetch_battery_info(BatteryInfoC *info)
     if (service) {
         CFNumberRef cycle = (CFNumberRef)IORegistryEntryCreateCFProperty(service, CFSTR("CycleCount"), kCFAllocatorDefault, 0);
         if (cycle) {
-            CFNumberGetValue(cycle, kCFNumberIntType, &info->cycle_count);
+            if (CFNumberGetValue(cycle, kCFNumberIntType, &info->cycle_count)) {
+                info->has_cycle_count = 1;
+            }
             CFRelease(cycle);
         }
 
         CFNumberRef temp = (CFNumberRef)IORegistryEntryCreateCFProperty(service, CFSTR("Temperature"), kCFAllocatorDefault, 0);
         if (temp) {
             int raw_temp = 0;
-            CFNumberGetValue(temp, kCFNumberIntType, &raw_temp);
-            info->temperature = ((double)raw_temp / 10.0) - 273.15;
+            if (CFNumberGetValue(temp, kCFNumberIntType, &raw_temp)) {
+                info->temperature = ((double)raw_temp / 10.0) - 273.15;
+                info->has_temperature = 1;
+            }
             CFRelease(temp);
         }
 
@@ -729,11 +747,12 @@ int fetch_battery_info(BatteryInfoC *info)
         if (volt) CFNumberGetValue(volt, kCFNumberIntType, &v_mv);
         if (amp) CFNumberGetValue(amp, kCFNumberLongLongType, &a_ma);
 
-        if (v_mv > 0) {
+        if (v_mv > 0 && amp) {
             double v_volts = (double)v_mv / 1000.0;
             double a_amps = (double)llabs(a_ma) / 1000.0;
             double watts = v_volts * a_amps;
             info->power_watts = (double)((long long)(watts * 10.0)) / 10.0;
+            info->has_power_watts = 1;
         }
 
         if (volt) CFRelease(volt);

@@ -1,7 +1,6 @@
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_uchar};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -29,6 +28,11 @@ pub struct BatteryInfoC {
     pub temperature: f64,
     pub power_watts: f64,
     pub has_battery: c_int,
+    pub has_percentage: c_int,
+    pub has_charging: c_int,
+    pub has_cycle_count: c_int,
+    pub has_temperature: c_int,
+    pub has_power_watts: c_int,
 }
 
 extern "C" {
@@ -46,7 +50,6 @@ extern "C" {
 }
 
 static SMC_CONNECTION: Mutex<u32> = Mutex::new(0);
-static LAST_GPU_TEMP: Mutex<Option<(f64, Instant)>> = Mutex::new(None);
 
 pub fn ensure_smc_open() -> bool {
     let mut conn = SMC_CONNECTION.lock().unwrap();
@@ -135,38 +138,14 @@ pub fn get_cpu_temperature() -> Option<f64> {
 }
 
 pub fn get_gpu_temperature() -> Option<f64> {
-    let mut max_t: Option<f64> = None;
-    for key in GPU_APPLE_SILICON_KEYS.iter().chain(GPU_INTEL_KEYS.iter()) {
-        if let Some(t) = read_smc_key(key) {
-            if t > 15.0 && t < 125.0 {
-                match max_t {
-                    Some(cur) => {
-                        if (t as f64) > cur {
-                            max_t = Some(t as f64);
-                        }
-                    }
-                    None => max_t = Some(t as f64),
-                }
-            }
-        }
-    }
-
-    let mut last_gpu = LAST_GPU_TEMP.lock().unwrap();
-    let now = Instant::now();
-
-    if let Some(t) = max_t {
-        let rounded = (t * 10.0).round() / 10.0;
-        *last_gpu = Some((rounded, now));
-        Some(rounded)
-    } else if let Some((cached_t, time)) = *last_gpu {
-        if now.duration_since(time) < Duration::from_secs(8) {
-            Some(cached_t)
-        } else {
-            None
-        }
-    } else {
-        None
-    }
+    GPU_APPLE_SILICON_KEYS
+        .iter()
+        .chain(GPU_INTEL_KEYS.iter())
+        .filter_map(|key| read_smc_key(key))
+        .filter(|temperature| *temperature > 15.0 && *temperature < 125.0)
+        .map(f64::from)
+        .max_by(|left, right| left.total_cmp(right))
+        .map(|temperature| (temperature * 10.0).round() / 10.0)
 }
 
 pub fn get_all_sensors() -> Vec<(String, String, f64)> {
@@ -251,22 +230,20 @@ pub struct RawBatteryReading {
     pub power_watts: Option<f64>,
 }
 
-pub fn get_battery_reading() -> Option<RawBatteryReading> {
+pub fn get_battery_reading() -> Result<Option<RawBatteryReading>, String> {
     let mut c_info: BatteryInfoC = unsafe { std::mem::zeroed() };
-    let has = unsafe { fetch_battery_info(&mut c_info) };
+    let status = unsafe { fetch_battery_info(&mut c_info) };
 
-    if has != 0 {
-        Some(RawBatteryReading {
-            charge_percent: (0..=100)
-                .contains(&c_info.percentage)
-                .then_some(c_info.percentage),
-            temperature_celsius: (c_info.temperature > 10.0 && c_info.temperature <= 80.0)
+    match status {
+        1 => Ok(Some(RawBatteryReading {
+            charge_percent: (c_info.has_percentage != 0).then_some(c_info.percentage),
+            temperature_celsius: (c_info.has_temperature != 0)
                 .then_some((c_info.temperature * 10.0).round() / 10.0),
-            is_charging: Some(c_info.is_charging != 0),
-            cycle_count: (c_info.cycle_count >= 0).then_some(c_info.cycle_count),
-            power_watts: (c_info.power_watts.abs() > 0.1).then_some(c_info.power_watts),
-        })
-    } else {
-        None
+            is_charging: (c_info.has_charging != 0).then_some(c_info.is_charging != 0),
+            cycle_count: (c_info.has_cycle_count != 0).then_some(c_info.cycle_count),
+            power_watts: (c_info.has_power_watts != 0).then_some(c_info.power_watts),
+        })),
+        0 => Ok(None),
+        _ => Err("IOKit battery access is unavailable".into()),
     }
 }

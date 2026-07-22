@@ -2,7 +2,7 @@ import React from "react";
 import { TrendingUp } from "lucide-react";
 
 interface TemperatureChartProps {
-  history: { time: number; cpu: number; gpu: number }[];
+  history: { time: number; cpu: number; gpu: number | null }[];
   unit: "C" | "F";
 }
 
@@ -16,7 +16,7 @@ export const TemperatureChart: React.FC<TemperatureChartProps> = ({ history, uni
 
   // Determine min & max for scale
   const cpuVals = data.map((d) => d.cpu);
-  const gpuVals = data.map((d) => d.gpu);
+  const gpuVals = data.flatMap((d) => (d.gpu === null ? [] : [d.gpu]));
   const allVals = [...cpuVals, ...gpuVals];
   const minTemp = Math.max(20, Math.min(...allVals) - 5);
   const maxTemp = Math.min(105, Math.max(...allVals) + 5);
@@ -29,10 +29,13 @@ export const TemperatureChart: React.FC<TemperatureChartProps> = ({ history, uni
   const getY = (val: number) => height - ((val - minTemp) / range) * (height - 8) - 4;
 
   const cpuPoints = data.map((d, i) => `${getX(i)},${getY(d.cpu)}`).join(" ");
-  const gpuPoints = data.map((d, i) => `${getX(i)},${getY(d.gpu)}`).join(" ");
+  const gpuPoints = data
+    .map((d, i) => (d.gpu === null ? null : `${getX(i)},${getY(d.gpu)}`))
+    .filter((point): point is string => point !== null)
+    .join(" ");
 
   const latestCpu = data[data.length - 1]?.cpu || 0;
-  const latestGpu = data[data.length - 1]?.gpu || 0;
+  const latestGpu = data[data.length - 1]?.gpu ?? null;
 
   return (
     <div className="glass-card p-3.5 rounded-xl flex flex-col gap-2">
@@ -48,7 +51,7 @@ export const TemperatureChart: React.FC<TemperatureChartProps> = ({ history, uni
           </span>
           <span className="flex items-center gap-1 text-amber-400 font-mono">
             <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
-            GPU: {formatVal(latestGpu)}°{unit}
+            GPU: {latestGpu === null ? "--" : `${formatVal(latestGpu)}°${unit}`}
           </span>
         </div>
       </div>
@@ -85,20 +88,22 @@ export const TemperatureChart: React.FC<TemperatureChartProps> = ({ history, uni
             points={cpuPoints}
           />
 
-          {/* Area under GPU */}
-          <polygon
-            points={`0,${height} ${gpuPoints} ${width},${height}`}
-            fill="url(#gpuGradient)"
-          />
-          {/* GPU Polyline */}
-          <polyline
-            fill="none"
-            stroke="#fbbf24"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            points={gpuPoints}
-          />
+          {gpuPoints && (
+            <>
+              <polygon
+                points={`0,${height} ${gpuPoints} ${width},${height}`}
+                fill="url(#gpuGradient)"
+              />
+              <polyline
+                fill="none"
+                stroke="#fbbf24"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                points={gpuPoints}
+              />
+            </>
+          )}
         </svg>
       </div>
     </div>

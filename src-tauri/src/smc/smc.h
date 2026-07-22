@@ -75,6 +75,11 @@ typedef struct {
     double temperature; // °C
     double power_watts;
     int has_battery;
+    int has_percentage;
+    int has_charging;
+    int has_cycle_count;
+    int has_temperature;
+    int has_power_watts;
 } BatteryInfoC;
 
 // Function declarations

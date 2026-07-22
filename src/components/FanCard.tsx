@@ -15,15 +15,20 @@ export const FanCard: React.FC<FanCardProps> = ({
   onSetSpeed,
   onSetMode,
 }) => {
-  const [sliderVal, setSliderVal] = useState<number>(fan.speed);
+  const minSpeedRpm = fan.min_speed_rpm ?? fan.speed_rpm;
+  const maxSpeedRpm = fan.max_speed_rpm ?? fan.speed_rpm;
+  const [sliderVal, setSliderVal] = useState<number>(fan.target_speed_rpm ?? fan.speed_rpm);
 
   const percent = Math.round(
-    ((fan.speed - fan.min_speed) / (fan.max_speed - fan.min_speed || 1)) * 100
+    ((fan.speed_rpm - minSpeedRpm) / (maxSpeedRpm - minSpeedRpm || 1)) * 100
   );
   const clampedPercent = Math.min(Math.max(percent, 0), 100);
 
   // Rotation speed in seconds based on RPM
-  const rotationDuration = fan.speed > 0 ? Math.max(0.3, 3 - (fan.speed / fan.max_speed) * 2.7) : 0;
+  const rotationDuration =
+    fan.speed_rpm > 0 && maxSpeedRpm > 0
+      ? Math.max(0.3, 3 - (fan.speed_rpm / maxSpeedRpm) * 2.7)
+      : 0;
 
   return (
     <div className="glass-card p-3.5 rounded-xl flex flex-col gap-3">
@@ -40,7 +45,7 @@ export const FanCard: React.FC<FanCardProps> = ({
           <div>
             <h3 className="text-xs font-bold text-slate-200">{fan.label}</h3>
             <p className="text-[10px] text-slate-400 font-mono">
-              {fan.min_speed} - {fan.max_speed} RPM
+              {fan.min_speed_rpm ?? "--"} - {fan.max_speed_rpm ?? "--"} RPM
             </p>
           </div>
         </div>
@@ -50,7 +55,7 @@ export const FanCard: React.FC<FanCardProps> = ({
             onClick={() => onSetMode(fan.id, "auto")}
             disabled={!actuationAvailable}
             className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-              fan.mode === "auto"
+              fan.mode === "system_auto"
                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
                 : "text-slate-400 hover:text-white"
             }`}
@@ -73,7 +78,7 @@ export const FanCard: React.FC<FanCardProps> = ({
 
       <div className="flex items-baseline justify-between">
         <div className="flex items-baseline gap-1.5">
-          <span className="text-2xl font-black text-white tracking-tight font-mono">{fan.speed}</span>
+          <span className="text-2xl font-black text-white tracking-tight font-mono">{fan.speed_rpm}</span>
           <span className="text-xs font-semibold text-slate-400">RPM</span>
         </div>
         <span className="text-xs font-bold text-cyan-400 font-mono">{clampedPercent}%</span>
@@ -84,7 +89,7 @@ export const FanCard: React.FC<FanCardProps> = ({
           <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
           <span>Fan actuation unavailable; System Auto is active</span>
         </div>
-      ) : fan.mode === "manual" ? (
+      ) : fan.mode === "manual" && fan.min_speed_rpm !== null && fan.max_speed_rpm !== null ? (
         <div className="flex flex-col gap-1.5">
           <div className="flex justify-between text-[10px] text-slate-400">
             <span>Target Speed</span>
@@ -92,8 +97,8 @@ export const FanCard: React.FC<FanCardProps> = ({
           </div>
           <input
             type="range"
-            min={fan.min_speed}
-            max={fan.max_speed}
+            min={fan.min_speed_rpm}
+            max={fan.max_speed_rpm}
             step={100}
             value={sliderVal}
             onChange={(e) => setSliderVal(Number(e.target.value))}

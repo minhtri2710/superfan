@@ -1,26 +1,11 @@
-export interface SensorReading {
-  key: string;
-  label: string;
-  value: number;
-}
-
-export interface FanReading {
-  id: number;
-  label: string;
-  speed: number;
-  min_speed: number;
-  max_speed: number;
-  target_speed?: number;
-  mode: "auto" | "manual";
-}
-
-export interface BatteryReading {
-  percentage: number;
-  temperature: number;
-  is_charging: boolean;
-  cycle_count: number;
-  power_watts: number;
-}
+export type { Availability } from "./generated/Availability";
+export type { BatteryReading } from "./generated/BatteryReading";
+export type { FanActuationStatus } from "./generated/FanActuationStatus";
+export type { FanMode } from "./generated/FanMode";
+export type { FanReading } from "./generated/FanReading";
+export type { HardwareTelemetrySnapshot } from "./generated/HardwareTelemetrySnapshot";
+export type { TemperatureReading } from "./generated/TemperatureReading";
+export type { TemperatureReadings } from "./generated/TemperatureReadings";
 
 export interface FanRule {
   id: string;
@@ -31,24 +16,6 @@ export interface FanRule {
   minFanPercent: number;
   maxFanPercent: number;
   active: boolean;
-}
-
-export type FanActuationStatus =
-  | "not_registered"
-  | "requires_approval"
-  | "ready"
-  | "unavailable";
-
-export interface TelemetryData {
-  cpu_temp: number | null;
-  gpu_temp: number | null;
-  max_cpu_temp: number | null;
-  sensors: SensorReading[];
-  fans: FanReading[];
-  battery: BatteryReading | null;
-  has_smc_access: boolean;
-  fan_actuation_status: FanActuationStatus;
-  timestamp: number;
 }
 
 export interface AppSettings {

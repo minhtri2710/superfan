@@ -1,9 +1,9 @@
 import React from "react";
 import { Cpu } from "lucide-react";
-import { SensorReading } from "../types";
+import { TemperatureReading } from "../types";
 
 interface CoreBreakdownProps {
-  sensors: SensorReading[];
+  sensors: TemperatureReading[];
   unit: "C" | "F";
 }
 
@@ -37,14 +37,14 @@ export const CoreBreakdown: React.FC<CoreBreakdownProps> = ({ sensors, unit }) =
           <div
             key={s.key}
             className={`p-2 rounded-lg border flex items-center justify-between transition-all ${getTempColor(
-              s.value
+              s.celsius
             )}`}
           >
             <div>
               <div className="text-[10px] font-bold text-slate-200">{s.label}</div>
               <div className="text-[9px] font-mono text-slate-400">{s.key}</div>
             </div>
-            <div className="text-xs font-extrabold font-mono">{formatTemp(s.value)}</div>
+            <div className="text-xs font-extrabold font-mono">{formatTemp(s.celsius)}</div>
           </div>
         ))}
       </div>

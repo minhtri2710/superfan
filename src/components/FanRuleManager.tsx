@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { Sliders, Shield, Flame, Zap, Plus, Check, Trash2, Cpu, Thermometer } from "lucide-react";
-import { FanRule, SensorReading } from "../types";
+import { FanRule, TemperatureReading } from "../types";
 
 interface FanRuleManagerProps {
   activePreset: "auto" | "quiet" | "performance" | "custom";
   customRules: FanRule[];
-  sensors: SensorReading[];
+  sensors: TemperatureReading[];
   onSelectPreset: (preset: "auto" | "quiet" | "performance" | "custom") => void;
   onSaveRule: (rule: FanRule) => void;
   onDeleteRule: (id: string) => void;
