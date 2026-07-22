@@ -18,6 +18,7 @@ Rust backend
   ├─ Thermal policy module
   │    └─ Hardware telemetry snapshot → Fan plan
   └─ Fan actuation module
+       ├─ administrator-authorized installer adapter
        └─ Unix socket → privileged launchd daemon → Apple SMC
 ```
 
@@ -27,7 +28,7 @@ The Hardware telemetry snapshot module normalizes temperatures, fan measurements
 
 The Thermal policy module owns presets and custom rules in Rust. It evaluates one Hardware telemetry snapshot at a time and produces a Fan plan. Policy settings persist through Tauri store. TypeScript interfaces are generated from the Rust contracts with `npm run generate:types`.
 
-The Fan actuation module owns privileged writes. The application communicates with a launchd daemon through a narrow Unix socket protocol. The daemon authorizes the active console user, validates targets against hardware ranges, and restores all fans to System Auto when communication or its heartbeat lease fails.
+The Fan actuation module owns privileged writes. An administrator-authorized installer places the helper in `/Library/PrivilegedHelperTools` and its traditional plist in `/Library/LaunchDaemons`, with transactional rollback on launchd failure. The application communicates with the installed daemon through a narrow Unix socket protocol. The daemon authorizes the active console user, validates targets against hardware ranges, and restores all fans to System Auto when communication or its heartbeat lease fails.
 
 ## Thermal policy behavior
 
@@ -52,11 +53,10 @@ The Fan actuation module owns privileged writes. The application communicates wi
 | `select_thermal_policy_mode` | Select System Auto, Quiet, Performance, or Custom. |
 | `upsert_thermal_rule` | Validate and persist a custom Thermal rule. |
 | `delete_thermal_rule` | Delete and persist a custom Thermal rule. |
-| `fan_actuation_status` | Report launchd Fan actuation readiness. |
+| `fan_actuation_status` | Report installed Fan actuation helper readiness. |
 | `set_fan_speed` | Apply a direct manual RPM target while Thermal policy is in System Auto. |
 | `set_fan_mode` | Select direct manual behavior or System Auto while automatic policy is inactive. |
-| `register_fan_actuation_service` | Register the privileged launchd daemon with macOS. |
-| `open_fan_actuation_settings` | Open macOS Login Items settings for approval. |
+| `install_fan_actuation_helper` | Prompt for administrator authorization and install or repair the privileged helper. |
 | `toggle_popover` | Show or hide the application window. |
 
 ## SMC and IOKit readings

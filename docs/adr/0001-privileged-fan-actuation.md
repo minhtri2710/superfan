@@ -1,5 +1,6 @@
 ---
-status: accepted
+status: superseded
+superseded_by: 0005
 ---
 
 # Use a privileged launchd service for Fan actuation
