@@ -9,6 +9,8 @@ import { FanRuleManager } from "./components/FanRuleManager";
 import { FanCard } from "./components/FanCard";
 import { BatteryCard } from "./components/BatteryCard";
 import { SettingsModal } from "./components/SettingsModal";
+import { UpdateModal } from "./components/UpdateModal";
+import { checkForUpdates, ReleaseInfo } from "./services/updater";
 import {
   ApplicationPreferenceChange,
   ApplicationPreferences,
@@ -20,7 +22,7 @@ import {
   ThermalPolicySettings,
   ThermalRule,
 } from "./types";
-import { ShieldAlert, ShieldCheck } from "lucide-react";
+import { ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
 
 function unavailableReason(
   availability: { status: "available" } | { status: "not_present" } | { status: "unavailable"; reason: string },
@@ -46,6 +48,11 @@ export function App() {
     launch_at_login: false,
   });
   const [preferencesError, setPreferencesError] = useState<string | null>(null);
+
+  // Software Update States
+  const [updateRelease, setUpdateRelease] = useState<ReleaseInfo | null>(null);
+  const [hasUpdateAvailable, setHasUpdateAvailable] = useState<boolean>(false);
+  const [showUpdateModal, setShowUpdateModal] = useState<boolean>(false);
 
   const recordSnapshot = (snapshot: HardwareTelemetrySnapshot) => {
     setTelemetry(snapshot);
@@ -75,6 +82,16 @@ export function App() {
     invoke<ThermalPolicySettings>("thermal_policy_settings")
       .then(setThermalPolicy)
       .catch((error) => console.error("Thermal policy settings fetch failed:", error));
+
+    // Check for software updates on launch
+    checkForUpdates()
+      .then((res) => {
+        if (res.hasUpdate && res.latestRelease) {
+          setHasUpdateAvailable(true);
+          setUpdateRelease(res.latestRelease);
+        }
+      })
+      .catch(() => {});
 
     const unlistenPromise = listen<HardwareTelemetrySnapshot>("telemetry-update", (event) => {
       recordSnapshot(event.payload);
@@ -183,6 +200,10 @@ export function App() {
               preferences={preferences}
               fanActuationStatus={fanActuationStatus}
               onUpdatePreferences={handleUpdatePreferences}
+              onShowUpdateModal={(release) => {
+                setUpdateRelease(release);
+                setShowUpdateModal(true);
+              }}
             />
           </>
         ) : (
@@ -275,8 +296,27 @@ export function App() {
           <ShieldCheck className={`w-3 h-3 ${hasSmcAccess ? "text-emerald-400" : "text-rose-400"}`} />
           SMC Status: {telemetry === null ? "Waiting" : hasSmcAccess ? "Available" : "Unavailable"}
         </span>
-        <span className="font-mono">SuperFan v1.0.1</span>
+
+        {hasUpdateAvailable && updateRelease ? (
+          <button
+            onClick={() => setShowUpdateModal(true)}
+            className="flex items-center gap-1 font-mono text-amber-400 font-bold hover:underline transition-all"
+          >
+            <Sparkles className="w-3 h-3 animate-pulse" />
+            Update v{updateRelease.version}
+          </button>
+        ) : (
+          <span className="font-mono">SuperFan v1.0.1</span>
+        )}
       </div>
+
+      {showUpdateModal && updateRelease && (
+        <UpdateModal
+          currentVersion="1.0.1"
+          release={updateRelease}
+          onClose={() => setShowUpdateModal(false)}
+        />
+      )}
     </div>
   );
 }

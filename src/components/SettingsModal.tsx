@@ -1,21 +1,40 @@
 import React, { useState } from "react";
 import { ApplicationPreferenceChange, ApplicationPreferences } from "../types";
-import { ShieldCheck, ShieldAlert, Clock, Thermometer, Wrench, CheckCircle2, Power, ToggleLeft, ToggleRight } from "lucide-react";
+import {
+  ShieldCheck,
+  ShieldAlert,
+  Clock,
+  Thermometer,
+  Wrench,
+  CheckCircle2,
+  Power,
+  ToggleLeft,
+  ToggleRight,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { checkForUpdates, ReleaseInfo } from "../services/updater";
 
 interface SettingsModalProps {
   preferences: ApplicationPreferences;
   fanActuationStatus: "not_registered" | "ready" | "unavailable";
   onUpdatePreferences: (change: ApplicationPreferenceChange) => void;
+  onShowUpdateModal: (release: ReleaseInfo) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   preferences,
   fanActuationStatus,
   onUpdatePreferences,
+  onShowUpdateModal,
 }) => {
   const [installing, setInstalling] = useState(false);
   const [installMsg, setInstallMsg] = useState<string | null>(null);
+
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatusMsg, setUpdateStatusMsg] = useState<string | null>(null);
+
   const handleToggleAutostart = () => {
     onUpdatePreferences({
       type: "set_launch_at_login",
@@ -37,6 +56,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setInstallMsg(`Error: ${err}`);
     } finally {
       setInstalling(false);
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    setCheckingUpdate(true);
+    setUpdateStatusMsg(null);
+    try {
+      const res = await checkForUpdates();
+      if (res.error) {
+        setUpdateStatusMsg(`Check failed: ${res.error}`);
+      } else if (res.hasUpdate && res.latestRelease) {
+        setUpdateStatusMsg(`New version v${res.latestRelease.version} is available!`);
+        onShowUpdateModal(res.latestRelease);
+      } else {
+        setUpdateStatusMsg("SuperFan is up to date! (v1.0.1)");
+      }
+    } catch (err: any) {
+      setUpdateStatusMsg(`Error: ${err?.message || err}`);
+    } finally {
+      setCheckingUpdate(false);
     }
   };
 
@@ -121,6 +160,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <option value={1500}>1.5s (Balanced)</option>
           <option value={2500}>2.5s (Eco)</option>
         </select>
+      </div>
+
+      {/* Software Updates */}
+      <div className="glass-card p-3 rounded-xl flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <div>
+              <div className="text-xs font-semibold text-white">Software Update</div>
+              <div className="text-[10px] text-slate-400">Version 1.0.1</div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleCheckForUpdates}
+            disabled={checkingUpdate}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white border border-white/10 flex items-center gap-1.5 transition-all shadow-md"
+          >
+            <RefreshCw className={`w-3 h-3 ${checkingUpdate ? "animate-spin text-amber-400" : ""}`} />
+            {checkingUpdate ? "Checking..." : "Check for Updates"}
+          </button>
+        </div>
+
+        {updateStatusMsg && (
+          <div className="mt-1 p-2 rounded-lg bg-slate-900/60 border border-white/10 text-[10px] font-mono text-slate-300 flex items-start gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+            <span>{updateStatusMsg}</span>
+          </div>
+        )}
       </div>
 
       {/* Helper Status & Installation */}
