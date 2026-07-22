@@ -68,6 +68,15 @@ typedef struct {
     SMCBytes_t              bytes;
 } SMCVal_t;
 
+typedef struct {
+    int percentage;
+    int is_charging;
+    int cycle_count;
+    double temperature; // °C
+    double power_watts;
+    int has_battery;
+} BatteryInfoC;
+
 // Function declarations
 UInt32 _strtoul(char *str, int size, int base);
 void _ultostr(char *str, UInt32 val);
@@ -78,5 +87,6 @@ kern_return_t SMCClose(io_connect_t conn);
 kern_return_t SMCReadKey(UInt32Char_t key, SMCVal_t *val, io_connect_t conn);
 kern_return_t SMCWriteKey(SMCVal_t writeVal, io_connect_t conn);
 kern_return_t SMCGetKeyInfo(UInt32 key, SMCKeyData_keyInfo_t *keyInfo, io_connect_t conn);
+int fetch_battery_info(BatteryInfoC *info);
 
 #endif

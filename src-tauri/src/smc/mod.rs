@@ -21,12 +21,24 @@ pub struct SMCVal {
     pub bytes: [c_uchar; 32],
 }
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct BatteryInfoC {
+    pub percentage: c_int,
+    pub is_charging: c_int,
+    pub cycle_count: c_int,
+    pub temperature: f64,
+    pub power_watts: f64,
+    pub has_battery: c_int,
+}
+
 extern "C" {
     pub fn SMCOpen(conn: *mut u32) -> c_int;
     pub fn SMCClose(conn: u32) -> c_int;
     pub fn SMCReadKey(key: *const c_char, val: *mut SMCVal, conn: u32) -> c_int;
     pub fn SMCWriteKey(write_val: SMCVal, conn: u32) -> c_int;
     pub fn getFloatFromVal(val: SMCVal) -> f32;
+    pub fn fetch_battery_info(info: *mut BatteryInfoC) -> c_int;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -253,18 +265,20 @@ pub fn get_fan_readings() -> Vec<FanReading> {
 }
 
 pub fn get_battery_reading() -> Option<BatteryReading> {
-    let temp = read_smc_key("B0CT").map(|v| v as f64)?;
-    let percentage = read_smc_key("B0AC").map(|v| v as i32).unwrap_or(100);
-    let cycle_count = read_smc_key("B0CT").map(|v| v as i32).unwrap_or(0);
-    let power_watts = read_smc_key("B0AV").map(|v| (v as f64) / 1000.0).unwrap_or(0.0);
+    let mut c_info: BatteryInfoC = unsafe { std::mem::zeroed() };
+    let has = unsafe { fetch_battery_info(&mut c_info) };
 
-    Some(BatteryReading {
-        percentage,
-        temperature: (temp * 10.0).round() / 10.0,
-        is_charging: false,
-        cycle_count,
-        power_watts,
-    })
+    if has != 0 {
+        Some(BatteryReading {
+            percentage: c_info.percentage,
+            temperature: (c_info.temperature * 10.0).round() / 10.0,
+            is_charging: c_info.is_charging != 0,
+            cycle_count: c_info.cycle_count,
+            power_watts: c_info.power_watts,
+        })
+    } else {
+        None
+    }
 }
 
 pub fn get_telemetry() -> TelemetryData {

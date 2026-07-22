@@ -11,6 +11,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <IOKit/IOKitLib.h>
+#include <IOKit/ps/IOPowerSources.h>
+#include <IOKit/ps/IOPSKeys.h>
+#include <CoreFoundation/CoreFoundation.h>
 #include "smc.h"
 
 static io_connect_t g_conn = 0;
@@ -665,4 +668,68 @@ int main(int argc, char *argv[])
     
     SMCClose(g_conn);
     return 0;
+}
+
+int fetch_battery_info(BatteryInfoC *info)
+{
+    if (!info) return 0;
+    memset(info, 0, sizeof(BatteryInfoC));
+
+    CFTypeRef snapshot = IOPSCopyPowerSourcesInfo();
+    if (!snapshot) return 0;
+
+    CFArrayRef sources = IOPSCopyPowerSourcesList(snapshot);
+    if (!sources || CFArrayGetCount(sources) == 0) {
+        if (sources) CFRelease(sources);
+        CFRelease(snapshot);
+        return 0;
+    }
+
+    CFDictionaryRef ps = IOPSGetPowerSourceDescription(snapshot, CFArrayGetValueAtIndex(sources, 0));
+    if (ps) {
+        info->has_battery = 1;
+        
+        CFNumberRef cap = (CFNumberRef)CFDictionaryGetValue(ps, CFSTR(kIOPSCurrentCapacityKey));
+        if (cap) CFNumberGetValue(cap, kCFNumberIntType, &info->percentage);
+
+        CFBooleanRef charging = (CFBooleanRef)CFDictionaryGetValue(ps, CFSTR(kIOPSIsChargingKey));
+        if (charging) info->is_charging = CFBooleanGetValue(charging) ? 1 : 0;
+    }
+
+    CFRelease(sources);
+    CFRelease(snapshot);
+
+    io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"));
+    if (service) {
+        CFNumberRef cycle = (CFNumberRef)IORegistryEntryCreateCFProperty(service, CFSTR("CycleCount"), kCFAllocatorDefault, 0);
+        if (cycle) {
+            CFNumberGetValue(cycle, kCFNumberIntType, &info->cycle_count);
+            CFRelease(cycle);
+        }
+
+        CFNumberRef temp = (CFNumberRef)IORegistryEntryCreateCFProperty(service, CFSTR("Temperature"), kCFAllocatorDefault, 0);
+        if (temp) {
+            int raw_temp = 0;
+            CFNumberGetValue(temp, kCFNumberIntType, &raw_temp);
+            info->temperature = ((double)raw_temp / 10.0) - 273.15;
+            CFRelease(temp);
+        }
+
+        CFNumberRef volt = (CFNumberRef)IORegistryEntryCreateCFProperty(service, CFSTR("Voltage"), kCFAllocatorDefault, 0);
+        CFNumberRef amp = (CFNumberRef)IORegistryEntryCreateCFProperty(service, CFSTR("Amperage"), kCFAllocatorDefault, 0);
+        if (volt && amp) {
+            int v_mv = 0, a_ma = 0;
+            CFNumberGetValue(volt, kCFNumberIntType, &v_mv);
+            CFNumberGetValue(amp, kCFNumberIntType, &a_ma);
+            double v_volts = (double)v_mv / 1000.0;
+            double a_amps = (double)abs(a_ma) / 1000.0;
+            info->power_watts = (double)((long long)(v_volts * a_amps * 10.0)) / 10.0;
+        }
+        if (volt) CFRelease(volt);
+        if (amp) CFRelease(amp);
+
+        IOObjectRelease(service);
+    }
+
+    return info->has_battery;
 }
