@@ -1,0 +1,73 @@
+name: Build & Release macOS App
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    name: Build macOS Universal App (.app & .dmg)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Web Frontend & Tauri macOS App
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
+        run: |
+          npm run build
+          npx tauri build --target universal-apple-darwin
+
+      - name: Verify Bundle
+        run: |
+          scripts/verify-fan-actuation-bundle.sh src-tauri/target/universal-apple-darwin/release/bundle/macos/SuperFan.app
+
+      - name: Compress SuperFan.app
+        run: |
+          cd src-tauri/target/universal-apple-darwin/release/bundle/macos
+          tar -czvf SuperFan-macOS-Universal.app.tar.gz SuperFan.app
+
+      - name: Upload Build Artifacts (.app.tar.gz & .dmg)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SuperFan-macOS-Universal
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/SuperFan-macOS-Universal.app.tar.gz
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/SuperFan-macOS-Universal.app.tar.gz
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
