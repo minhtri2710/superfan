@@ -5,7 +5,7 @@ SuperFan observes Mac hardware thermals and manages fan behavior while preservin
 ## Language
 
 **Hardware telemetry snapshot**:
-A point-in-time normalized view of temperatures, fans, battery state, and hardware access health.
+A point-in-time normalized view of temperatures, fans, battery state, and hardware access health. Fields name Celsius, RPM, percent, watts, and capture time explicitly; each hardware group reports `available`, `not_present`, or `unavailable` instead of display fallbacks.
 _Avoid_: Telemetry data, sensor payload
 
 **Thermal policy**:
