@@ -25,6 +25,7 @@ type PreferencesModule = ApplicationPreferencesModule<
 
 struct ApplicationPreferencesState {
     preferences: Mutex<PreferencesModule>,
+    telemetry_interval: tokio::sync::watch::Sender<u64>,
 }
 
 struct ThermalPolicyState {
@@ -68,7 +69,11 @@ fn update_application_preferences(
     state: tauri::State<'_, Arc<ApplicationPreferencesState>>,
     change: ApplicationPreferenceChange,
 ) -> Result<ApplicationPreferences, String> {
-    state.preferences.lock().unwrap().update(change)
+    let updated = state.preferences.lock().unwrap().update(change)?;
+    state
+        .telemetry_interval
+        .send_replace(updated.telemetry_interval_ms);
+    Ok(updated)
 }
 
 #[tauri::command]
@@ -229,8 +234,11 @@ pub fn run() {
                 TauriPreferencesStore::new(app_handle.clone()),
                 TauriAutostartAdapter::new(app_handle.clone()),
             )?;
+            let (telemetry_interval, mut telemetry_interval_updates) =
+                tokio::sync::watch::channel(preferences.current().telemetry_interval_ms);
             _app.manage(Arc::new(ApplicationPreferencesState {
                 preferences: Mutex::new(preferences),
+                telemetry_interval,
             }));
 
             let policy_settings = thermal_policy::settings::load(&app_handle)
@@ -283,12 +291,13 @@ pub fn run() {
                 })
                 .build(_app)?;
 
-            // Telemetry Background Timer Loop (1.5s interval)
             tauri::async_runtime::spawn(async move {
-                let mut interval = tokio::time::interval(std::time::Duration::from_millis(1500));
                 let mut policy_runtime = ThermalPolicyRuntime::default();
                 loop {
-                    interval.tick().await;
+                    application_preferences::cadence::wait_for_next_tick(
+                        &mut telemetry_interval_updates,
+                    )
+                    .await;
                     let data = telemetry_snapshot();
                     let settings = policy_state.settings.lock().unwrap().clone();
                     let now_unix_ms = data.captured_at_unix_ms;
