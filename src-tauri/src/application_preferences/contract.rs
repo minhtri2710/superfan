@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-pub const SUPPORTED_TELEMETRY_INTERVALS_MS: [u64; 3] = [1_000, 1_500, 2_500];
+pub const SUPPORTED_TELEMETRY_INTERVALS_MS: [u32; 3] = [1_000, 1_500, 2_500];
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
@@ -16,7 +16,7 @@ pub enum TemperatureUnit {
 #[ts(export)]
 pub struct ApplicationPreferences {
     pub temperature_unit: TemperatureUnit,
-    pub telemetry_interval_ms: u64,
+    pub telemetry_interval_ms: u32,
     pub launch_at_login: bool,
 }
 
@@ -35,6 +35,6 @@ impl Default for ApplicationPreferences {
 #[ts(export)]
 pub enum ApplicationPreferenceChange {
     SetTemperatureUnit { value: TemperatureUnit },
-    SetTelemetryIntervalMs { value: u64 },
+    SetTelemetryIntervalMs { value: u32 },
     SetLaunchAtLogin { value: bool },
 }

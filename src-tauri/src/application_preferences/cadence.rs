@@ -1,11 +1,11 @@
 use std::time::Duration;
 use tokio::sync::watch;
 
-pub async fn wait_for_next_tick(receiver: &mut watch::Receiver<u64>) {
+pub async fn wait_for_next_tick(receiver: &mut watch::Receiver<u32>) {
     loop {
         let interval_ms = *receiver.borrow_and_update();
         tokio::select! {
-            _ = tokio::time::sleep(Duration::from_millis(interval_ms)) => return,
+            _ = tokio::time::sleep(Duration::from_millis(u64::from(interval_ms))) => return,
             changed = receiver.changed() => {
                 if changed.is_err() {
                     return;

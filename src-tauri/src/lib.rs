@@ -25,7 +25,7 @@ type PreferencesModule = ApplicationPreferencesModule<
 
 struct ApplicationPreferencesState {
     preferences: Mutex<PreferencesModule>,
-    telemetry_interval: tokio::sync::watch::Sender<u64>,
+    telemetry_interval: tokio::sync::watch::Sender<u32>,
 }
 
 struct ThermalPolicyState {

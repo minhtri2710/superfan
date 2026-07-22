@@ -10,7 +10,8 @@ import { FanCard } from "./components/FanCard";
 import { BatteryCard } from "./components/BatteryCard";
 import { SettingsModal } from "./components/SettingsModal";
 import {
-  AppSettings,
+  ApplicationPreferenceChange,
+  ApplicationPreferences,
   BatteryReading,
   FanReading,
   HardwareTelemetrySnapshot,
@@ -37,13 +38,14 @@ export function App() {
     mode: "system_auto",
     rules: [],
   });
-  const [activeTab, setActiveTab] = useState<"overview" | "dashboard" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "settings">("overview");
   const [policyError, setPolicyError] = useState<string | null>(null);
-  const [settings, setSettings] = useState<AppSettings>({
-    tempUnit: "C",
-    pollingInterval: 1500,
-    launchAtLogin: false,
+  const [preferences, setPreferences] = useState<ApplicationPreferences>({
+    temperature_unit: "celsius",
+    telemetry_interval_ms: 1500,
+    launch_at_login: false,
   });
+  const [preferencesError, setPreferencesError] = useState<string | null>(null);
 
   const recordSnapshot = (snapshot: HardwareTelemetrySnapshot) => {
     setTelemetry(snapshot);
@@ -67,6 +69,9 @@ export function App() {
     invoke<HardwareTelemetrySnapshot>("fetch_telemetry")
       .then(recordSnapshot)
       .catch((error) => console.error("Hardware telemetry snapshot fetch failed:", error));
+    invoke<ApplicationPreferences>("application_preferences")
+      .then(setPreferences)
+      .catch((error) => console.error("Application preferences fetch failed:", error));
     invoke<ThermalPolicySettings>("thermal_policy_settings")
       .then(setThermalPolicy)
       .catch((error) => console.error("Thermal policy settings fetch failed:", error));
@@ -98,6 +103,19 @@ export function App() {
 
   const handleHideWindow = () => {
     invoke("toggle_popover").catch(() => {});
+  };
+
+  const handleUpdatePreferences = async (change: ApplicationPreferenceChange) => {
+    try {
+      const updated = await invoke<ApplicationPreferences>("update_application_preferences", {
+        change,
+      });
+      setPreferences(updated);
+      setPreferencesError(null);
+    } catch (error) {
+      setPreferencesError(String(error));
+      console.error("Application preferences update failed:", error);
+    }
   };
 
   const handleSelectPolicyMode = async (mode: ThermalPolicyMode) => {
@@ -152,17 +170,24 @@ export function App() {
 
       <div className="flex-1 overflow-y-auto p-3.5 space-y-3">
         {activeTab === "settings" ? (
-          <SettingsModal
-            settings={settings}
-            fanActuationStatus={fanActuationStatus}
-            onUpdateSettings={(newValue) => setSettings((previous) => ({ ...previous, ...newValue }))}
-          />
+          <>
+            {preferencesError && (
+              <div className="px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[10px] text-rose-200">
+                Application preferences update failed: {preferencesError}
+              </div>
+            )}
+            <SettingsModal
+              preferences={preferences}
+              fanActuationStatus={fanActuationStatus}
+              onUpdatePreferences={handleUpdatePreferences}
+            />
+          </>
         ) : (
           <>
             <TemperatureGauge
               cpuTemp={temperatures?.cpu_celsius ?? null}
               gpuTemp={temperatures?.gpu_celsius ?? null}
-              unit={settings.tempUnit}
+              unit={preferences.temperature_unit === "celsius" ? "C" : "F"}
             />
 
             {telemetry?.temperatures.status === "unavailable" && (
@@ -172,9 +197,17 @@ export function App() {
               </div>
             )}
 
-            <TemperatureChart history={tempHistory} unit={settings.tempUnit} />
+            <TemperatureChart
+              history={tempHistory}
+              unit={preferences.temperature_unit === "celsius" ? "C" : "F"}
+            />
 
-            {sensors.length > 0 && <CoreBreakdown sensors={sensors} unit={settings.tempUnit} />}
+            {sensors.length > 0 && (
+              <CoreBreakdown
+                sensors={sensors}
+                unit={preferences.temperature_unit === "celsius" ? "C" : "F"}
+              />
+            )}
 
             {policyError && (
               <div className="px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[10px] text-rose-200">
@@ -220,7 +253,10 @@ export function App() {
               )}
             </div>
 
-            <BatteryCard battery={battery} unit={settings.tempUnit} />
+            <BatteryCard
+              battery={battery}
+              unit={preferences.temperature_unit === "celsius" ? "C" : "F"}
+            />
 
             {telemetry && telemetry.battery.status !== "available" && (
               <div className="px-3 py-2 rounded-lg bg-slate-900/40 border border-white/5 text-[10px] text-slate-400">

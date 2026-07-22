@@ -1,3 +1,5 @@
+export type { ApplicationPreferenceChange } from "./generated/ApplicationPreferenceChange";
+export type { ApplicationPreferences } from "./generated/ApplicationPreferences";
 export type { Availability } from "./generated/Availability";
 export type { BatteryReading } from "./generated/BatteryReading";
 export type { FanActuationStatus } from "./generated/FanActuationStatus";
@@ -10,9 +12,4 @@ export type { ThermalPolicyMode } from "./generated/ThermalPolicyMode";
 export type { ThermalPolicySettings } from "./generated/ThermalPolicySettings";
 export type { ThermalRule } from "./generated/ThermalRule";
 export type { ThermalTarget } from "./generated/ThermalTarget";
-
-export interface AppSettings {
-  tempUnit: "C" | "F";
-  pollingInterval: number; // in ms
-  launchAtLogin: boolean;
-}
+export type { TemperatureUnit } from "./generated/TemperatureUnit";

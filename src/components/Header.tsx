@@ -4,8 +4,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface HeaderProps {
   hasAccess: boolean;
-  activeTab: "overview" | "dashboard" | "settings";
-  setActiveTab: (tab: "overview" | "dashboard" | "settings") => void;
+  activeTab: "overview" | "settings";
+  setActiveTab: (tab: "overview" | "settings") => void;
   onHideWindow: () => void;
 }
 

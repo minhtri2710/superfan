@@ -1,38 +1,26 @@
-import React, { useState, useEffect } from "react";
-import { AppSettings } from "../types";
+import React, { useState } from "react";
+import { ApplicationPreferenceChange, ApplicationPreferences } from "../types";
 import { ShieldCheck, ShieldAlert, Clock, Thermometer, Wrench, CheckCircle2, Power, ToggleLeft, ToggleRight } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface SettingsModalProps {
-  settings: AppSettings;
+  preferences: ApplicationPreferences;
   fanActuationStatus: "not_registered" | "requires_approval" | "ready" | "unavailable";
-  onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
+  onUpdatePreferences: (change: ApplicationPreferenceChange) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
-  settings,
+  preferences,
   fanActuationStatus,
-  onUpdateSettings,
+  onUpdatePreferences,
 }) => {
   const [installing, setInstalling] = useState(false);
   const [installMsg, setInstallMsg] = useState<string | null>(null);
-  const [autostart, setAutostart] = useState<boolean>(settings.launchAtLogin);
-
-  useEffect(() => {
-    invoke<boolean>("is_autostart_enabled")
-      .then((enabled) => setAutostart(enabled))
-      .catch(() => {});
-  }, []);
-
-  const handleToggleAutostart = async () => {
-    const nextState = !autostart;
-    try {
-      await invoke("toggle_autostart", { enable: nextState });
-      setAutostart(nextState);
-      onUpdateSettings({ launchAtLogin: nextState });
-    } catch (err: any) {
-      console.error("Autostart error:", err);
-    }
+  const handleToggleAutostart = () => {
+    onUpdatePreferences({
+      type: "set_launch_at_login",
+      value: !preferences.launch_at_login,
+    });
   };
 
   const handleFanActuationAction = async () => {
@@ -69,9 +57,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         <div className="flex items-center p-0.5 bg-slate-900/60 rounded-lg border border-white/5 text-[11px]">
           <button
-            onClick={() => onUpdateSettings({ tempUnit: "C" })}
+            onClick={() => onUpdatePreferences({ type: "set_temperature_unit", value: "celsius" })}
             className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-              settings.tempUnit === "C"
+              preferences.temperature_unit === "celsius"
                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
                 : "text-slate-400 hover:text-white"
             }`}
@@ -79,9 +67,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             °C
           </button>
           <button
-            onClick={() => onUpdateSettings({ tempUnit: "F" })}
+            onClick={() => onUpdatePreferences({ type: "set_temperature_unit", value: "fahrenheit" })}
             className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-              settings.tempUnit === "F"
+              preferences.temperature_unit === "fahrenheit"
                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
                 : "text-slate-400 hover:text-white"
             }`}
@@ -105,7 +93,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           onClick={handleToggleAutostart}
           className="text-slate-300 hover:text-white transition-colors"
         >
-          {autostart ? (
+          {preferences.launch_at_login ? (
             <ToggleRight className="w-7 h-7 text-cyan-400" />
           ) : (
             <ToggleLeft className="w-7 h-7 text-slate-600" />
@@ -124,8 +112,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         <select
-          value={settings.pollingInterval}
-          onChange={(e) => onUpdateSettings({ pollingInterval: Number(e.target.value) })}
+          value={preferences.telemetry_interval_ms}
+          onChange={(e) =>
+            onUpdatePreferences({ type: "set_telemetry_interval_ms", value: Number(e.target.value) })
+          }
           className="bg-slate-900/80 border border-white/10 text-white text-xs rounded-lg px-2 py-1 outline-none font-mono cursor-pointer"
         >
           <option value={1000}>1.0s (Fast)</option>
