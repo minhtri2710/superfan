@@ -227,6 +227,9 @@ pub fn run() {
             toggle_popover
         ])
         .setup(move |_app| {
+            #[cfg(target_os = "macos")]
+            _app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             let app_handle = _app.handle().clone();
             let preferences = ApplicationPreferencesModule::load(
                 TauriPreferencesStore::new(app_handle.clone()),
