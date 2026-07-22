@@ -29,8 +29,8 @@ fi
 
 grep -Fq 'with administrator privileges' "$authorizer" || fail "authorizer does not request administrator privileges"
 grep -Fq 'quoted form of (item 1 of argv)' "$authorizer" || fail "installer path is not safely quoted"
-grep -Fq '/Library/PrivilegedHelperTools/com.superfan.fan-actuation' "$installer" || fail "installer destination is missing"
-grep -Fq '/Library/LaunchDaemons/com.superfan.fan-actuation.plist' "$installer" || fail "plist destination is missing"
+grep -Fq 'destination_helper="/Library/PrivilegedHelperTools/$label"' "$installer" || fail "installer destination is missing"
+grep -Fq 'destination_plist="/Library/LaunchDaemons/$label.plist"' "$installer" || fail "plist destination is missing"
 
 codesign --verify --deep --strict --verbose=2 "$app"
 echo "fan actuation installer bundle verified: $app"
