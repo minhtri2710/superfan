@@ -13,6 +13,7 @@ use tauri::{
 #[derive(Default)]
 pub struct AppState {
     pub demo_mode: AtomicBool,
+    pub auto_curve_enabled: AtomicBool,
 }
 
 #[tauri::command]
@@ -126,9 +127,30 @@ fn toggle_popover(window: Window) {
     }
 }
 
+// Calculate target fan RPM according to temperature curve
+fn calculate_smart_curve_rpm(temp: f64, min_rpm: i32, max_rpm: i32) -> i32 {
+    let min_f = min_rpm as f64;
+    let max_f = max_rpm as f64;
+
+    if temp < 45.0 {
+        min_rpm
+    } else if temp < 75.0 {
+        let ratio = (temp - 45.0) / 30.0;
+        let target = min_f + ratio * (max_f * 0.7 - min_f);
+        target as i32
+    } else if temp < 90.0 {
+        let ratio = (temp - 75.0) / 15.0;
+        let target = (max_f * 0.7) + ratio * (max_f * 0.3);
+        target as i32
+    } else {
+        max_rpm // Emergency 100% fan speed for 90°C+
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = Arc::new(AppState::default());
+    app_state.auto_curve_enabled.store(true, Ordering::Relaxed);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -203,6 +225,22 @@ pub fn run() {
                     let demo = state_clone.demo_mode.load(Ordering::Relaxed);
                     let mut data = get_telemetry(demo);
                     data.is_helper_installed = check_helper_status();
+
+                    // Evaluate Smart Fan Curve for emergency over-temperature (>85°C)
+                    if let Some(cpu_t) = data.cpu_temp {
+                        if cpu_t > 85.0 && check_helper_status() && !demo {
+                            for fan in &data.fans {
+                                if fan.mode == "auto" {
+                                    let target_rpm = calculate_smart_curve_rpm(cpu_t, fan.min_speed, fan.max_speed);
+                                    let _ = Command::new("/usr/local/bin/smc-helper")
+                                        .arg("set")
+                                        .arg(fan.id.to_string())
+                                        .arg(target_rpm.to_string())
+                                        .output();
+                                }
+                            }
+                        }
+                    }
 
                     // Update tray title if CPU temp is available
                     if let Some(tray) = app_handle.tray_by_id("superfan-tray") {

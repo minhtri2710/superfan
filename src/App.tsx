@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Header } from "./components/Header";
 import { TemperatureGauge } from "./components/TemperatureGauge";
+import { TemperatureChart } from "./components/TemperatureChart";
 import { FanCard } from "./components/FanCard";
 import { BatteryCard } from "./components/BatteryCard";
 import { SettingsModal } from "./components/SettingsModal";
@@ -11,6 +12,7 @@ import { ShieldCheck } from "lucide-react";
 
 export function App() {
   const [telemetry, setTelemetry] = useState<TelemetryData | null>(null);
+  const [tempHistory, setTempHistory] = useState<{ time: number; cpu: number; gpu: number }[]>([]);
   const [activeTab, setActiveTab] = useState<"overview" | "dashboard" | "settings">("overview");
   const [settings, setSettings] = useState<AppSettings>({
     tempUnit: "C",
@@ -25,12 +27,24 @@ export function App() {
 
     // Initial fetch
     invoke<TelemetryData>("fetch_telemetry")
-      .then((data) => setTelemetry(data))
+      .then((data) => {
+        setTelemetry(data);
+        if (data.cpu_temp !== null) {
+          setTempHistory([{ time: Date.now(), cpu: data.cpu_temp, gpu: data.gpu_temp || data.cpu_temp - 5 }]);
+        }
+      })
       .catch((err) => console.error("Telemetry fetch error:", err));
 
     // Listen for real-time telemetry updates from Rust backend
     const unlistenPromise = listen<TelemetryData>("telemetry-update", (event) => {
-      setTelemetry(event.payload);
+      const data = event.payload;
+      setTelemetry(data);
+      if (data.cpu_temp !== null) {
+        setTempHistory((prev) => [
+          ...prev.slice(-40),
+          { time: Date.now(), cpu: data.cpu_temp!, gpu: data.gpu_temp || data.cpu_temp! - 4 },
+        ]);
+      }
     });
 
     return () => {
@@ -131,6 +145,9 @@ export function App() {
               gpuTemp={currentTelemetry.gpu_temp}
               unit={settings.tempUnit}
             />
+
+            {/* Temperature History Chart */}
+            <TemperatureChart history={tempHistory} unit={settings.tempUnit} />
 
             {/* Fans Section */}
             <div className="space-y-2">
