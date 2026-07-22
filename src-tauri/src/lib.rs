@@ -9,6 +9,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, Window,
 };
+use tauri_plugin_autostart::ManagerExt;
 
 #[derive(Default)]
 pub struct AppState {
@@ -25,6 +26,21 @@ fn fetch_telemetry() -> TelemetryData {
     let mut data = get_telemetry();
     data.is_helper_installed = check_helper_status();
     data
+}
+
+#[tauri::command]
+fn is_autostart_enabled<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> bool {
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+#[tauri::command]
+fn toggle_autostart<R: tauri::Runtime>(app: tauri::AppHandle<R>, enable: bool) -> Result<bool, String> {
+    if enable {
+        app.autolaunch().enable().map_err(|e| e.to_string())?;
+    } else {
+        app.autolaunch().disable().map_err(|e| e.to_string())?;
+    }
+    Ok(enable)
 }
 
 #[tauri::command]
@@ -148,6 +164,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             check_helper_status,
             fetch_telemetry,
+            is_autostart_enabled,
+            toggle_autostart,
             set_fan_speed,
             set_fan_mode,
             install_helper,
@@ -156,14 +174,14 @@ pub fn run() {
         .setup(move |_app| {
             let app_handle = _app.handle().clone();
 
-            // Setup Tray Icon
+            // Setup Tray Icon (No icon set, title only for clean menu bar text)
             let quit_i = MenuItem::with_id(_app, "quit", "Quit SuperFan", true, None::<&str>)?;
             let show_i = MenuItem::with_id(_app, "show", "Show SuperFan", true, None::<&str>)?;
             let menu = Menu::with_items(_app, &[&show_i, &quit_i])?;
 
             let _tray = TrayIconBuilder::with_id("superfan-tray")
                 .tooltip("SuperFan - macOS Temperature & Fan Control")
-                .icon(_app.default_window_icon().unwrap().clone())
+                .title("🔥 SuperFan")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
