@@ -306,13 +306,13 @@ export function App() {
             Update v{updateRelease.version}
           </button>
         ) : (
-          <span className="font-mono">SuperFan v1.0.1</span>
+          <span className="font-mono">SuperFan v1.0.2</span>
         )}
       </div>
 
       {showUpdateModal && updateRelease && (
         <UpdateModal
-          currentVersion="1.0.1"
+          currentVersion="1.0.2"
           release={updateRelease}
           onClose={() => setShowUpdateModal(false)}
         />
