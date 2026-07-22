@@ -3,7 +3,7 @@ pub mod hardware_telemetry;
 pub mod smc;
 
 use fan_actuation::client::{self, ActuationStatus};
-use smc::{get_telemetry, TelemetryData};
+use hardware_telemetry::contract::{FanActuationStatus, HardwareTelemetrySnapshot};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -16,14 +16,24 @@ fn fan_actuation_status() -> ActuationStatus {
     client::status()
 }
 
+fn telemetry_snapshot() -> HardwareTelemetrySnapshot {
+    let fan_actuation_status = match client::status() {
+        ActuationStatus::NotRegistered => FanActuationStatus::NotRegistered,
+        ActuationStatus::RequiresApproval => FanActuationStatus::RequiresApproval,
+        ActuationStatus::Ready => FanActuationStatus::Ready,
+        ActuationStatus::Unavailable => FanActuationStatus::Unavailable,
+    };
+    let captured_at_unix_ms = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    hardware_telemetry::capture(fan_actuation_status, captured_at_unix_ms)
+}
+
 #[tauri::command]
-fn fetch_telemetry() -> TelemetryData {
-    let mut data = get_telemetry();
-    data.fan_actuation_status = serde_json::to_value(client::status())
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_owned))
-        .unwrap_or_else(|| "unavailable".into());
-    data
+fn fetch_telemetry() -> HardwareTelemetrySnapshot {
+    telemetry_snapshot()
 }
 
 #[tauri::command]
@@ -32,7 +42,10 @@ fn is_autostart_enabled<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> bool {
 }
 
 #[tauri::command]
-fn toggle_autostart<R: tauri::Runtime>(app: tauri::AppHandle<R>, enable: bool) -> Result<bool, String> {
+fn toggle_autostart<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    enable: bool,
+) -> Result<bool, String> {
     if enable {
         app.autolaunch().enable().map_err(|e| e.to_string())?;
     } else {
@@ -155,22 +168,22 @@ pub fn run() {
                 let mut interval = tokio::time::interval(std::time::Duration::from_millis(1500));
                 loop {
                     interval.tick().await;
-                    let mut data = get_telemetry();
-                    let actuation_status = client::status();
-                    data.fan_actuation_status = serde_json::to_value(&actuation_status)
-                        .ok()
-                        .and_then(|value| value.as_str().map(str::to_owned))
-                        .unwrap_or_else(|| "unavailable".into());
+                    let data = telemetry_snapshot();
 
-                    if actuation_status == ActuationStatus::Ready {
+                    if data.fan_actuation_status == FanActuationStatus::Ready {
                         let _ = client::heartbeat();
                     }
 
                     // Update tray title if CPU temp is available
                     if let Some(tray) = app_handle.tray_by_id("superfan-tray") {
-                        if let Some(temp) = data.cpu_temp {
-                            let title = format!("🔥 {:.0}°C", temp);
-                            let _ = tray.set_title(Some(title));
+                        if let hardware_telemetry::contract::Availability::Available {
+                            value: temperatures,
+                        } = &data.temperatures
+                        {
+                            if let Some(temp) = temperatures.cpu_celsius {
+                                let title = format!("🔥 {:.0}°C", temp);
+                                let _ = tray.set_title(Some(title));
+                            }
                         }
                     }
 

@@ -40,18 +40,18 @@ pub struct FanReading {
     pub id: usize,
     pub label: String,
     pub speed_rpm: i32,
-    pub min_speed_rpm: i32,
-    pub max_speed_rpm: i32,
+    pub min_speed_rpm: Option<i32>,
+    pub max_speed_rpm: Option<i32>,
     pub target_speed_rpm: Option<i32>,
-    pub mode: FanMode,
+    pub mode: Option<FanMode>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[ts(export)]
 pub struct BatteryReading {
-    pub charge_percent: i32,
+    pub charge_percent: Option<i32>,
     pub temperature_celsius: Option<f64>,
-    pub is_charging: bool,
+    pub is_charging: Option<bool>,
     pub cycle_count: Option<i32>,
     pub power_watts: Option<f64>,
 }
@@ -97,17 +97,17 @@ impl HardwareTelemetrySnapshot {
                     id: 0,
                     label: "Fan 1".into(),
                     speed_rpm: 2400,
-                    min_speed_rpm: 1200,
-                    max_speed_rpm: 6000,
+                    min_speed_rpm: Some(1200),
+                    max_speed_rpm: Some(6000),
                     target_speed_rpm: Some(2400),
-                    mode: FanMode::SystemAuto,
+                    mode: Some(FanMode::SystemAuto),
                 }],
             },
             battery: Availability::Available {
                 value: BatteryReading {
-                    charge_percent: 78,
+                    charge_percent: Some(78),
                     temperature_celsius: Some(31.2),
-                    is_charging: false,
+                    is_charging: Some(false),
                     cycle_count: Some(142),
                     power_watts: Some(18.4),
                 },
@@ -131,6 +131,37 @@ mod tests {
         assert_eq!(value["fans"]["value"][0]["speed_rpm"], 2400);
         assert_eq!(value["battery"]["value"]["charge_percent"], 78);
         assert_eq!(value["battery"]["value"]["power_watts"], 18.4);
+    }
+
+    #[test]
+    fn unreadable_optional_measurements_serialize_as_null() {
+        let mut snapshot = HardwareTelemetrySnapshot::fixture();
+        snapshot.fans = Availability::Available {
+            value: vec![FanReading {
+                id: 0,
+                label: "Fan 1".into(),
+                speed_rpm: 2400,
+                min_speed_rpm: None,
+                max_speed_rpm: None,
+                target_speed_rpm: None,
+                mode: None,
+            }],
+        };
+        snapshot.battery = Availability::Available {
+            value: BatteryReading {
+                charge_percent: None,
+                temperature_celsius: None,
+                is_charging: None,
+                cycle_count: None,
+                power_watts: None,
+            },
+        };
+
+        let value = serde_json::to_value(snapshot).expect("snapshot should serialize");
+        assert!(value["fans"]["value"][0]["min_speed_rpm"].is_null());
+        assert!(value["fans"]["value"][0]["mode"].is_null());
+        assert!(value["battery"]["value"]["charge_percent"].is_null());
+        assert!(value["battery"]["value"]["is_charging"].is_null());
     }
 
     #[test]

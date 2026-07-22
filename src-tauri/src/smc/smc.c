@@ -733,10 +733,6 @@ int fetch_battery_info(BatteryInfoC *info)
             double v_volts = (double)v_mv / 1000.0;
             double a_amps = (double)llabs(a_ma) / 1000.0;
             double watts = v_volts * a_amps;
-            if (watts <= 0.1) {
-                // When plugged into AC and 100% full, idle system power draw is ~12.5W
-                watts = 12.8;
-            }
             info->power_watts = (double)((long long)(watts * 10.0)) / 10.0;
         }
 
@@ -744,17 +740,6 @@ int fetch_battery_info(BatteryInfoC *info)
         if (amp) CFRelease(amp);
 
         IOObjectRelease(service);
-    }
-
-    // Default fallbacks for display if specific battery sensors are unreadable
-    if (info->temperature <= 10.0 || info->temperature > 80.0) {
-        info->temperature = 31.2;
-    }
-    if (info->power_watts <= 0.1) {
-        info->power_watts = 15.4;
-    }
-    if (info->cycle_count <= 0) {
-        info->cycle_count = 142;
     }
 
     return info->has_battery;
