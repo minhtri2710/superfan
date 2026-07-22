@@ -114,6 +114,9 @@ export function App() {
       setPreferencesError(null);
     } catch (error) {
       setPreferencesError(String(error));
+      invoke<ApplicationPreferences>("application_preferences")
+        .then(setPreferences)
+        .catch(() => {});
       console.error("Application preferences update failed:", error);
     }
   };

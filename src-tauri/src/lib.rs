@@ -69,10 +69,14 @@ fn update_application_preferences(
     state: tauri::State<'_, Arc<ApplicationPreferencesState>>,
     change: ApplicationPreferenceChange,
 ) -> Result<ApplicationPreferences, String> {
-    let updated = state.preferences.lock().unwrap().update(change)?;
-    state
-        .telemetry_interval
-        .send_replace(updated.telemetry_interval_ms);
+    let mut preferences = state.preferences.lock().unwrap();
+    let previous_interval_ms = preferences.current().telemetry_interval_ms;
+    let updated = preferences.update(change)?;
+    if updated.telemetry_interval_ms != previous_interval_ms {
+        state
+            .telemetry_interval
+            .send_replace(updated.telemetry_interval_ms);
+    }
     Ok(updated)
 }
 

@@ -22,7 +22,7 @@ impl<S: PreferencesStore, A: AutostartAdapter> ApplicationPreferencesModule<S, A
     pub fn load(store: S, autostart: A) -> Result<Self, String> {
         let mut current = store.load()?.unwrap_or_default();
         validate(&current)?;
-        current.launch_at_login = autostart.is_enabled()?;
+        current.launch_at_login = autostart.is_enabled().unwrap_or(false);
         Ok(Self {
             store,
             autostart,
