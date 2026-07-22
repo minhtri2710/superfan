@@ -5,6 +5,19 @@ version = "1.0.0"
 description = "SuperFan - High-performance Fan Control & Temperature Monitor for macOS"
 authors = ["beowulf"]
 edition = "2021"
+autobins = false
+
+[features]
+daemon-bin = []
+
+[[bin]]
+name = "superfan"
+path = "src/main.rs"
+
+[[bin]]
+name = "fan-actuation-daemon"
+path = "src/bin/fan-actuation-daemon.rs"
+required-features = ["daemon-bin"]
 
 [lib]
 name = "superfan_lib"

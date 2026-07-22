@@ -5,7 +5,11 @@
     <key>Label</key>
     <string>com.superfan.fan-actuation</string>
     <key>BundleProgram</key>
-    <string>Contents/MacOS/fan-actuation-daemon</string>
+    <string>Contents/Resources/fan-actuation-daemon</string>
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>com.superfan.app</string>
+    </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
