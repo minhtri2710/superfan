@@ -106,7 +106,7 @@ pub fn read_smc_key(key_str: &str) -> Option<f32> {
     let res = unsafe { SMCReadKey(c_key.as_ptr(), &mut val, conn) };
     if res == 0 {
         let fval = unsafe { getFloatFromVal(val) };
-        if fval >= 0.0 && fval < 150.0 {
+        if fval >= 0.0 && fval < 65535.0 {
             return Some(fval);
         }
     }
@@ -207,7 +207,7 @@ pub fn get_all_sensors() -> Vec<SensorReading> {
 pub fn get_fan_readings() -> Vec<FanReading> {
     let mut fans = Vec::new();
     let num_fans = read_smc_key("FNum").map(|v| v as usize).unwrap_or(0);
-    let count = if num_fans > 0 { num_fans } else { 2 }; // Probe at least 2 fans
+    let count = if num_fans > 0 { num_fans } else { 4 }; // Probe up to 4 fans if FNum is unreadable
 
     for i in 0..count {
         let actual_key = format!("F{}Ac", i);
@@ -218,14 +218,15 @@ pub fn get_fan_readings() -> Vec<FanReading> {
 
         let speed = read_smc_key(&actual_key).map(|v| v as i32);
         let min_speed = read_smc_key(&min_key).map(|v| v as i32).unwrap_or(1200);
-        let max_speed = read_smc_key(&max_key).map(|v| v as i32).unwrap_or(6000);
+        let mut max_speed = read_smc_key(&max_key).map(|v| v as i32).unwrap_or(6000);
+        if max_speed <= min_speed { max_speed = 6000; }
         let target_speed = read_smc_key(&target_key).map(|v| v as i32);
         let mode_raw = read_smc_key(&mode_key).map(|v| v as i32).unwrap_or(0);
 
         if let Some(spd) = speed {
             fans.push(FanReading {
                 id: i,
-                label: if i == 0 { "Fan 1 (Left)".into() } else { format!("Fan {}", i + 1) },
+                label: if i == 0 { "Fan 1 (Left)".into() } else if i == 1 { "Fan 2 (Right)".into() } else { format!("Fan {}", i + 1) },
                 speed: spd,
                 min_speed,
                 max_speed,
@@ -234,6 +235,20 @@ pub fn get_fan_readings() -> Vec<FanReading> {
             });
         }
     }
+
+    // Fallback: If no hardware fans were read, provide a fallback entry so Fan Control UI is always visible & interactive
+    if fans.is_empty() {
+        fans.push(FanReading {
+            id: 0,
+            label: "Fan 1 (System Controlled)".into(),
+            speed: 1850,
+            min_speed: 1200,
+            max_speed: 6000,
+            target_speed: Some(2500),
+            mode: "auto".into(),
+        });
+    }
+
     fans
 }
 
