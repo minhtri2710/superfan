@@ -8,6 +8,9 @@ React UI
        │ Tauri commands and telemetry events
        ▼
 Rust backend
+  ├─ Application preferences module
+  │    ├─ Tauri-store adapter
+  │    └─ macOS autostart adapter
   ├─ Hardware telemetry snapshot module
   │    ├─ SMC adapter
   │    ├─ IOKit adapter
@@ -17,6 +20,8 @@ Rust backend
   └─ Fan actuation module
        └─ Unix socket → privileged launchd daemon → Apple SMC
 ```
+
+The Application preferences module owns display temperature unit, telemetry cadence, and launch-at-login state. Its small interface returns one authoritative snapshot and accepts one tagged change. It validates supported cadence values, persists display and cadence preferences, reconciles launch-at-login with macOS, and notifies the telemetry loop when cadence changes.
 
 The Hardware telemetry snapshot module normalizes temperatures, fan measurements, battery measurements, and availability. Its interface uses explicit Celsius, RPM, percent, watts, and capture-time fields. Each hardware group reports `available`, `not_present`, or `unavailable`; the module does not invent display values.
 
@@ -40,6 +45,8 @@ The Fan actuation module owns privileged writes. The application communicates wi
 
 | Command | Purpose |
 | --- | --- |
+| `application_preferences` | Return the authoritative Application preferences snapshot. |
+| `update_application_preferences` | Validate and apply one tagged preference change. |
 | `fetch_telemetry` | Return the current Hardware telemetry snapshot. |
 | `thermal_policy_settings` | Return persisted Thermal policy settings. |
 | `select_thermal_policy_mode` | Select System Auto, Quiet, Performance, or Custom. |
@@ -50,7 +57,6 @@ The Fan actuation module owns privileged writes. The application communicates wi
 | `set_fan_mode` | Select direct manual behavior or System Auto while automatic policy is inactive. |
 | `register_fan_actuation_service` | Register the privileged launchd daemon with macOS. |
 | `open_fan_actuation_settings` | Open macOS Login Items settings for approval. |
-| `toggle_autostart` | Enable or disable launch at login. |
 | `toggle_popover` | Show or hide the application window. |
 
 ## SMC and IOKit readings

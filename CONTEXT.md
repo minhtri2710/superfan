@@ -23,3 +23,7 @@ _Avoid_: Fan control, helper command
 **System Auto**:
 The fail-safe state in which macOS owns fan behavior.
 _Avoid_: Auto mode, default mode
+
+**Application preferences**:
+The Rust-owned snapshot of display temperature unit, telemetry cadence, and actual macOS launch-at-login state. Updates are validated, persisted where appropriate, and propagated to the telemetry loop through one interface.
+_Avoid_: App settings, local settings
