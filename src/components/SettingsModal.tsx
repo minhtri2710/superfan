@@ -5,13 +5,13 @@ import { invoke } from "@tauri-apps/api/core";
 
 interface SettingsModalProps {
   settings: AppSettings;
-  isHelperInstalled: boolean;
+  fanActuationStatus: "not_registered" | "requires_approval" | "ready" | "unavailable";
   onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
-  isHelperInstalled,
+  fanActuationStatus,
   onUpdateSettings,
 }) => {
   const [installing, setInstalling] = useState(false);
@@ -35,12 +35,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  const handleInstallHelper = async () => {
+  const handleFanActuationAction = async () => {
     setInstalling(true);
-    setInstallMsg("Prompting for admin privileges...");
     try {
-      const result = await invoke<string>("install_helper");
-      setInstallMsg(result);
+      if (fanActuationStatus === "not_registered") {
+        setInstallMsg("Registering Fan actuation service...");
+        const result = await invoke<string>("register_fan_actuation_service");
+        setInstallMsg(`Fan actuation service status: ${result}`);
+      } else {
+        await invoke("open_fan_actuation_settings");
+        setInstallMsg("Opened Login Items in System Settings.");
+      }
     } catch (err: any) {
       setInstallMsg(`Error: ${err}`);
     } finally {
@@ -133,32 +138,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       <div className="glass-card p-3 rounded-xl flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {isHelperInstalled ? (
+            {fanActuationStatus === "ready" ? (
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
             ) : (
               <ShieldAlert className="w-4 h-4 text-amber-400" />
             )}
             <div>
-              <div className="text-xs font-semibold text-white">SMC Privileged Helper</div>
+              <div className="text-xs font-semibold text-white">Fan Actuation Service</div>
               <div className="text-[10px] text-slate-400">
-                {isHelperInstalled
-                  ? "Installed at /usr/local/bin/smc-helper"
-                  : "Required for manual fan speed modification"}
+                {fanActuationStatus === "ready"
+                  ? "Privileged service is ready"
+                  : fanActuationStatus === "requires_approval"
+                    ? "Approval is required in System Settings"
+                    : fanActuationStatus === "unavailable"
+                      ? "Service is registered but unavailable; System Auto is active"
+                      : "Required for manual fan speed modification"}
               </div>
             </div>
           </div>
 
           <button
-            onClick={handleInstallHelper}
+            onClick={handleFanActuationAction}
             disabled={installing}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md ${
-              isHelperInstalled
+              fanActuationStatus === "ready"
                 ? "bg-slate-800 text-slate-300 hover:bg-slate-700 border border-white/10"
                 : "bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-orange-500/20"
             }`}
           >
             <Wrench className="w-3 h-3" />
-            {installing ? "Installing..." : isHelperInstalled ? "Reinstall" : "Install Helper"}
+            {installing
+              ? "Working..."
+              : fanActuationStatus === "not_registered"
+                ? "Enable Service"
+                : "Open Settings"}
           </button>
         </div>
 

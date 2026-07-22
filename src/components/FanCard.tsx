@@ -4,11 +4,17 @@ import { FanReading } from "../types";
 
 interface FanCardProps {
   fan: FanReading;
+  actuationAvailable: boolean;
   onSetSpeed: (fanId: number, rpm: number) => void;
-  onSetMode: (fanId: number, mode: "auto" | "manual") => void;
+  onSetMode: (fanId: number, mode: "auto" | "manual", rpm?: number) => void;
 }
 
-export const FanCard: React.FC<FanCardProps> = ({ fan, onSetSpeed, onSetMode }) => {
+export const FanCard: React.FC<FanCardProps> = ({
+  fan,
+  actuationAvailable,
+  onSetSpeed,
+  onSetMode,
+}) => {
   const [sliderVal, setSliderVal] = useState<number>(fan.speed);
 
   const percent = Math.round(
@@ -42,6 +48,7 @@ export const FanCard: React.FC<FanCardProps> = ({ fan, onSetSpeed, onSetMode }) 
         <div className="flex items-center gap-1 bg-slate-900/60 p-0.5 rounded-lg border border-white/5 text-[10px]">
           <button
             onClick={() => onSetMode(fan.id, "auto")}
+            disabled={!actuationAvailable}
             className={`px-2 py-0.5 rounded-md font-medium transition-all ${
               fan.mode === "auto"
                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
@@ -51,7 +58,8 @@ export const FanCard: React.FC<FanCardProps> = ({ fan, onSetSpeed, onSetMode }) 
             Auto
           </button>
           <button
-            onClick={() => onSetMode(fan.id, "manual")}
+            onClick={() => onSetMode(fan.id, "manual", sliderVal)}
+            disabled={!actuationAvailable}
             className={`px-2 py-0.5 rounded-md font-medium transition-all ${
               fan.mode === "manual"
                 ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
@@ -71,7 +79,12 @@ export const FanCard: React.FC<FanCardProps> = ({ fan, onSetSpeed, onSetMode }) 
         <span className="text-xs font-bold text-cyan-400 font-mono">{clampedPercent}%</span>
       </div>
 
-      {fan.mode === "manual" ? (
+      {!actuationAvailable ? (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-200">
+          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+          <span>Fan actuation unavailable; System Auto is active</span>
+        </div>
+      ) : fan.mode === "manual" ? (
         <div className="flex flex-col gap-1.5">
           <div className="flex justify-between text-[10px] text-slate-400">
             <span>Target Speed</span>
@@ -85,6 +98,7 @@ export const FanCard: React.FC<FanCardProps> = ({ fan, onSetSpeed, onSetMode }) 
             value={sliderVal}
             onChange={(e) => setSliderVal(Number(e.target.value))}
             onMouseUp={() => onSetSpeed(fan.id, sliderVal)}
+            disabled={!actuationAvailable}
             className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
           />
         </div>

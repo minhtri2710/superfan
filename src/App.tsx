@@ -60,9 +60,9 @@ export function App() {
     }
   };
 
-  const handleSetFanMode = async (fanId: number, mode: "auto" | "manual") => {
+  const handleSetFanMode = async (fanId: number, mode: "auto" | "manual", rpm?: number) => {
     try {
-      await invoke("set_fan_mode", { fanId, mode });
+      await invoke("set_fan_mode", { fanId, mode, rpm });
     } catch (err) {
       console.error("Set fan mode failed:", err);
     }
@@ -99,7 +99,7 @@ export function App() {
     ],
     battery: null,
     has_smc_access: true,
-    is_helper_installed: false,
+    fan_actuation_status: "not_registered",
     timestamp: Date.now(),
   };
 
@@ -117,7 +117,7 @@ export function App() {
         {activeTab === "settings" ? (
           <SettingsModal
             settings={settings}
-            isHelperInstalled={currentTelemetry.is_helper_installed}
+            fanActuationStatus={currentTelemetry.fan_actuation_status}
             onUpdateSettings={(newVal) => setSettings((prev) => ({ ...prev, ...newVal }))}
           />
         ) : (
@@ -164,6 +164,7 @@ export function App() {
                   fan={fan}
                   onSetSpeed={handleSetFanSpeed}
                   onSetMode={handleSetFanMode}
+                  actuationAvailable={currentTelemetry.fan_actuation_status === "ready"}
                 />
               ))}
             </div>

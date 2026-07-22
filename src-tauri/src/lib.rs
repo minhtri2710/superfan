@@ -1,9 +1,8 @@
+pub mod fan_actuation;
 pub mod smc;
 
+use fan_actuation::client::{self, ActuationStatus};
 use smc::{get_telemetry, TelemetryData};
-use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -11,20 +10,18 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt;
 
-#[derive(Default)]
-pub struct AppState {
-    pub auto_curve_enabled: AtomicBool,
-}
-
 #[tauri::command]
-fn check_helper_status() -> bool {
-    std::path::Path::new("/usr/local/bin/smc-helper").exists()
+fn fan_actuation_status() -> ActuationStatus {
+    client::status()
 }
 
 #[tauri::command]
 fn fetch_telemetry() -> TelemetryData {
     let mut data = get_telemetry();
-    data.is_helper_installed = check_helper_status();
+    data.fan_actuation_status = serde_json::to_value(client::status())
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "unavailable".into());
     data
 }
 
@@ -44,77 +41,35 @@ fn toggle_autostart<R: tauri::Runtime>(app: tauri::AppHandle<R>, enable: bool) -
 }
 
 #[tauri::command]
-fn set_fan_speed(fan_id: usize, rpm: i32) -> Result<String, String> {
-    let helper_path = "/usr/local/bin/smc-helper";
-    if !std::path::Path::new(helper_path).exists() {
-        return Err("SMC Helper tool is not installed. Please install it from Settings.".into());
-    }
+fn set_fan_speed(fan_id: usize, rpm: i32) -> Result<(), String> {
+    client::set_target(fan_id, rpm)
+}
 
-    let output = Command::new(helper_path)
-        .arg("set")
-        .arg(fan_id.to_string())
-        .arg(rpm.to_string())
-        .output()
-        .map_err(|e| format!("Failed to execute helper: {}", e))?;
-
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(stdout.to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Helper error: {}", stderr))
+#[tauri::command]
+fn set_fan_mode(fan_id: usize, mode: String, rpm: Option<i32>) -> Result<(), String> {
+    match mode.as_str() {
+        "auto" => client::system_auto(fan_id),
+        "manual" => client::set_target(
+            fan_id,
+            rpm.ok_or_else(|| "manual mode requires a target RPM".to_string())?,
+        ),
+        _ => Err("fan mode must be auto or manual".into()),
     }
 }
 
 #[tauri::command]
-fn set_fan_mode(fan_id: usize, mode: String) -> Result<String, String> {
-    let helper_path = "/usr/local/bin/smc-helper";
-    if !std::path::Path::new(helper_path).exists() {
-        return Err("SMC Helper tool is not installed. Please install it from Settings.".into());
+fn register_fan_actuation_service() -> Result<ActuationStatus, String> {
+    let service_status = fan_actuation::bootstrap::register()?;
+    if service_status == fan_actuation::bootstrap::ServiceStatus::RequiresApproval {
+        fan_actuation::bootstrap::open_system_settings();
+        return Ok(ActuationStatus::RequiresApproval);
     }
-
-    let mut cmd = Command::new(helper_path);
-    if mode == "auto" {
-        cmd.arg("auto").arg(fan_id.to_string());
-    } else {
-        cmd.arg("set").arg(fan_id.to_string()).arg("2500");
-    }
-
-    let output = cmd.output().map_err(|e| format!("Failed to execute helper: {}", e))?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
+    Ok(client::status())
 }
 
 #[tauri::command]
-fn install_helper() -> Result<String, String> {
-    let out_dir = match std::env::var("OUT_DIR") {
-        Ok(dir) => dir,
-        Err(_) => "/tmp".to_string(),
-    };
-    let built_helper = format!("{}/smc-helper", out_dir);
-    
-    // AppleScript command to prompt for admin password once and setuid
-    let script = format!(
-        "do shell script \"mkdir -p /usr/local/bin && cp '{}' /usr/local/bin/smc-helper && chown root:wheel /usr/local/bin/smc-helper && chmod 4755 /usr/local/bin/smc-helper\" with administrator privileges",
-        built_helper
-    );
-
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg(&script)
-        .output()
-        .map_err(|e| format!("Admin authentication failed: {}", e))?;
-
-    if output.status.success() {
-        Ok("SMC Helper successfully installed with root privileges.".into())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Installation failed: {}", stderr))
-    }
+fn open_fan_actuation_settings() {
+    fan_actuation::bootstrap::open_system_settings();
 }
 
 #[tauri::command]
@@ -127,31 +82,8 @@ fn toggle_popover(window: Window) {
     }
 }
 
-// Calculate target fan RPM according to temperature curve
-fn calculate_smart_curve_rpm(temp: f64, min_rpm: i32, max_rpm: i32) -> i32 {
-    let min_f = min_rpm as f64;
-    let max_f = max_rpm as f64;
-
-    if temp < 45.0 {
-        min_rpm
-    } else if temp < 75.0 {
-        let ratio = (temp - 45.0) / 30.0;
-        let target = min_f + ratio * (max_f * 0.7 - min_f);
-        target as i32
-    } else if temp < 90.0 {
-        let ratio = (temp - 75.0) / 15.0;
-        let target = (max_f * 0.7) + ratio * (max_f * 0.3);
-        target as i32
-    } else {
-        max_rpm // Emergency 100% fan speed for 90°C+
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app_state = Arc::new(AppState::default());
-    app_state.auto_curve_enabled.store(true, Ordering::Relaxed);
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
@@ -160,15 +92,15 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_positioner::init())
-        .manage(app_state.clone())
         .invoke_handler(tauri::generate_handler![
-            check_helper_status,
+            fan_actuation_status,
             fetch_telemetry,
             is_autostart_enabled,
             toggle_autostart,
             set_fan_speed,
             set_fan_mode,
-            install_helper,
+            register_fan_actuation_service,
+            open_fan_actuation_settings,
             toggle_popover
         ])
         .setup(move |_app| {
@@ -223,22 +155,14 @@ pub fn run() {
                 loop {
                     interval.tick().await;
                     let mut data = get_telemetry();
-                    data.is_helper_installed = check_helper_status();
+                    let actuation_status = client::status();
+                    data.fan_actuation_status = serde_json::to_value(&actuation_status)
+                        .ok()
+                        .and_then(|value| value.as_str().map(str::to_owned))
+                        .unwrap_or_else(|| "unavailable".into());
 
-                    // Evaluate Smart Fan Curve for emergency over-temperature (>85°C)
-                    if let Some(cpu_t) = data.cpu_temp {
-                        if cpu_t > 85.0 && check_helper_status() {
-                            for fan in &data.fans {
-                                if fan.mode == "auto" {
-                                    let target_rpm = calculate_smart_curve_rpm(cpu_t, fan.min_speed, fan.max_speed);
-                                    let _ = Command::new("/usr/local/bin/smc-helper")
-                                        .arg("set")
-                                        .arg(fan.id.to_string())
-                                        .arg(target_rpm.to_string())
-                                        .output();
-                                }
-                            }
-                        }
+                    if actuation_status == ActuationStatus::Ready {
+                        let _ = client::heartbeat();
                     }
 
                     // Update tray title if CPU temp is available

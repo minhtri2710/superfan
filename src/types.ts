@@ -33,6 +33,12 @@ export interface FanRule {
   active: boolean;
 }
 
+export type FanActuationStatus =
+  | "not_registered"
+  | "requires_approval"
+  | "ready"
+  | "unavailable";
+
 export interface TelemetryData {
   cpu_temp: number | null;
   gpu_temp: number | null;
@@ -41,7 +47,7 @@ export interface TelemetryData {
   fans: FanReading[];
   battery: BatteryReading | null;
   has_smc_access: boolean;
-  is_helper_installed: boolean;
+  fan_actuation_status: FanActuationStatus;
   timestamp: number;
 }
 

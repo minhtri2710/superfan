@@ -38,6 +38,11 @@ extern "C" {
     pub fn SMCReadKey(key: *const c_char, val: *mut SMCVal, conn: u32) -> c_int;
     pub fn SMCWriteKey(write_val: SMCVal, conn: u32) -> c_int;
     pub fn getFloatFromVal(val: SMCVal) -> f32;
+    pub fn getFanCount(conn: u32) -> c_int;
+    pub fn getFanMinSpeed(fan_num: c_int, conn: u32) -> f32;
+    pub fn getFanMaxSpeed(fan_num: c_int, conn: u32) -> f32;
+    pub fn setFanSpeed(fan_num: c_int, speed: c_int, conn: u32) -> c_int;
+    pub fn setFanAuto(fan_num: c_int, conn: u32) -> c_int;
     pub fn fetch_battery_info(info: *mut BatteryInfoC) -> c_int;
 }
 
@@ -77,7 +82,7 @@ pub struct TelemetryData {
     pub fans: Vec<FanReading>,
     pub battery: Option<BatteryReading>,
     pub has_smc_access: bool,
-    pub is_helper_installed: bool,
+    pub fan_actuation_status: String,
     pub timestamp: u64,
 }
 
@@ -107,6 +112,16 @@ pub fn close_smc() {
     }
 }
 
+pub fn with_smc_connection<T>(
+    operation: impl FnOnce(u32) -> Result<T, String>,
+) -> Result<T, String> {
+    if !ensure_smc_open() {
+        return Err("SMC access is unavailable".into());
+    }
+    let conn = *SMC_CONNECTION.lock().unwrap();
+    operation(conn)
+}
+
 pub fn read_smc_key(key_str: &str) -> Option<f32> {
     if !ensure_smc_open() {
         return None;
@@ -118,7 +133,7 @@ pub fn read_smc_key(key_str: &str) -> Option<f32> {
     let res = unsafe { SMCReadKey(c_key.as_ptr(), &mut val, conn) };
     if res == 0 {
         let fval = unsafe { getFloatFromVal(val) };
-        if fval >= 0.0 && fval < 65535.0 {
+        if (0.0..65535.0).contains(&fval) {
             return Some(fval);
         }
     }
@@ -302,7 +317,7 @@ pub fn get_telemetry() -> TelemetryData {
         fans,
         battery,
         has_smc_access: has_smc,
-        is_helper_installed: false,
+        fan_actuation_status: "not_registered".into(),
         timestamp: now_secs,
     }
 }

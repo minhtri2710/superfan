@@ -5,30 +5,20 @@ fn main() {
         cc::Build::new()
             .file("src/smc/smc.c")
             .include("src/smc")
+            .define("SUPERFAN_SMC_LIBRARY", None)
             .warnings(false)
             .compile("smc");
         println!("cargo:rustc-link-lib=framework=IOKit");
 
-        // Compile standalone smc-helper binary
-        let out_dir = std::env::var("OUT_DIR").unwrap();
-        let status = std::process::Command::new("clang")
-            .args(&[
-                "-O2",
-                "-framework",
-                "IOKit",
-                "-framework",
-                "CoreFoundation",
-                "src/smc/smc.c",
-                "-o",
-                &format!("{}/smc-helper", out_dir),
-            ])
-            .status();
+        cc::Build::new()
+            .file("src/fan_actuation/service_management.m")
+            .warnings(false)
+            .compile("fan_service_management");
+        println!("cargo:rustc-link-lib=framework=Foundation");
+        println!("cargo:rustc-link-lib=framework=ServiceManagement");
 
-        if let Ok(st) = status {
-            if st.success() {
-                println!("cargo:rerun-if-changed=src/smc/smc.c");
-            }
-        }
+        println!("cargo:rerun-if-changed=src/smc/smc.c");
+        println!("cargo:rerun-if-changed=src/fan_actuation/service_management.m");
     }
 
     tauri_build::build();

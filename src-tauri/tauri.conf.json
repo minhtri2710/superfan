@@ -32,7 +32,12 @@
     "active": true,
     "targets": "all",
     "macOS": {
-      "infoPlist": "Info.plist"
+      "infoPlist": "Info.plist",
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": "-",
+      "files": {
+        "Library/LaunchDaemons/com.superfan.fan-actuation.plist": "bundle/macos/LaunchDaemons/com.superfan.fan-actuation.plist"
+      }
     },
     "icon": [
       "icons/32x32.png",

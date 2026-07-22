@@ -547,6 +547,7 @@ void printFanInfo(io_connect_t conn)
     }
 }
 
+#ifndef SUPERFAN_SMC_LIBRARY
 void usage(const char *prog)
 {
     printf("SMC Fan Control Helper\n");
@@ -669,6 +670,8 @@ int main(int argc, char *argv[])
     SMCClose(g_conn);
     return 0;
 }
+
+#endif
 
 int fetch_battery_info(BatteryInfoC *info)
 {
