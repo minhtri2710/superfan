@@ -192,11 +192,14 @@ fn install_fan_actuation_helper(app: tauri::AppHandle) -> Result<ActuationStatus
     Ok(client::status())
 }
 
+use tauri_plugin_positioner::{Position, WindowExt};
+
 #[tauri::command]
 fn toggle_popover(window: Window) {
     if window.is_visible().unwrap_or(false) {
         let _ = window.hide();
     } else {
+        let _ = window.move_window(Position::TrayBottomCenter);
         let _ = window.show();
         let _ = window.set_focus();
     }
@@ -272,6 +275,7 @@ pub fn run() {
                             if is_visible {
                                 let _ = window.hide();
                             } else {
+                                let _ = window.move_window(Position::TrayBottomCenter);
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
@@ -284,6 +288,7 @@ pub fn run() {
                     }
                     "show" => {
                         if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.move_window(Position::TrayBottomCenter);
                             let _ = window.show();
                             let _ = window.set_focus();
                         }
