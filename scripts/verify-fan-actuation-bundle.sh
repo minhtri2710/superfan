@@ -1,38 +1,36 @@
 #!/bin/bash
 set -euo pipefail
 
-app=${1:?usage: verify-fan-actuation-bundle.sh /path/to/SuperFan.app [--registration-capable]}
-registration_capable=${2:-}
-plist="$app/Contents/Library/LaunchDaemons/com.superfan.fan-actuation.plist"
+app=${1:?usage: verify-fan-actuation-bundle.sh /path/to/SuperFan.app}
+resources="$app/Contents/Resources/fan-actuation"
+plist="$resources/com.superfan.fan-actuation.plist"
+helper="$resources/fan-actuation-daemon"
+installer="$resources/install-fan-actuation.sh"
+authorizer="$resources/authorize-install.applescript"
 
 fail() {
   echo "fan actuation bundle verification failed: $*" >&2
   exit 1
 }
 
-[ -f "$plist" ] || fail "missing LaunchDaemon plist"
+[ ! -e "$app/Contents/Library/LaunchDaemons/com.superfan.fan-actuation.plist" ] || fail "SMAppService plist must not be bundled"
+[ ! -e "$app/Contents/MacOS/fan-actuation-daemon" ] || fail "helper must not be a second app executable"
+[ -x "$helper" ] || fail "missing executable helper resource"
+[ -x "$installer" ] || fail "missing executable installer resource"
+[ -r "$authorizer" ] || fail "missing AppleScript authorization resource"
+[ -r "$plist" ] || fail "missing traditional launchd plist resource"
 plutil -lint "$plist" >/dev/null
-[ "$(plutil -extract Label raw "$plist")" = "com.superfan.fan-actuation" ] || fail "unexpected Label"
 
-associated=$(plutil -extract AssociatedBundleIdentifiers.0 raw "$plist" 2>/dev/null || true)
-[ "$associated" = "com.superfan.app" ] || fail "AssociatedBundleIdentifiers must contain com.superfan.app"
-
-program=$(plutil -extract BundleProgram raw "$plist")
-case "$program" in
-  /*|*../*) fail "BundleProgram must stay relative and inside the app bundle" ;;
-esac
-[ "$program" = "Contents/Resources/fan-actuation-daemon" ] || fail "BundleProgram must use the documented auxiliary resource path"
-helper="$app/$program"
-[ -x "$helper" ] || fail "BundleProgram does not resolve to an executable"
-
-codesign --verify --strict --verbose=2 "$helper"
-codesign --verify --deep --strict --verbose=2 "$app"
-
-if [ "$registration_capable" = "--registration-capable" ]; then
-  app_team=$(codesign -dvv "$app" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2}')
-  helper_team=$(codesign -dvv "$helper" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2}')
-  [ -n "$app_team" ] && [ "$app_team" != "not set" ] || fail "app is ad-hoc signed; Apple signing is required for registration"
-  [ "$helper_team" = "$app_team" ] || fail "app and helper TeamIdentifier values differ"
+program=$(plutil -extract ProgramArguments.0 raw "$plist")
+[ "$program" = "/Library/PrivilegedHelperTools/com.superfan.fan-actuation" ] || fail "unexpected installed helper path"
+if plutil -extract BundleProgram raw "$plist" >/dev/null 2>&1; then
+  fail "traditional plist must not contain BundleProgram"
 fi
 
-echo "fan actuation bundle verified: $app"
+grep -Fq 'with administrator privileges' "$authorizer" || fail "authorizer does not request administrator privileges"
+grep -Fq 'quoted form of (item 1 of argv)' "$authorizer" || fail "installer path is not safely quoted"
+grep -Fq '/Library/PrivilegedHelperTools/com.superfan.fan-actuation' "$installer" || fail "installer destination is missing"
+grep -Fq '/Library/LaunchDaemons/com.superfan.fan-actuation.plist' "$installer" || fail "plist destination is missing"
+
+codesign --verify --deep --strict --verbose=2 "$app"
+echo "fan actuation installer bundle verified: $app"

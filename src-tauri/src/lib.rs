@@ -183,18 +183,14 @@ fn set_fan_mode(
 }
 
 #[tauri::command]
-fn register_fan_actuation_service() -> Result<ActuationStatus, String> {
-    let service_status = fan_actuation::bootstrap::register()?;
-    if service_status == fan_actuation::bootstrap::ServiceStatus::RequiresApproval {
-        fan_actuation::bootstrap::open_system_settings();
-        return Ok(ActuationStatus::RequiresApproval);
-    }
+fn install_fan_actuation_helper(app: tauri::AppHandle) -> Result<ActuationStatus, String> {
+    let resource_directory = app
+        .path()
+        .resource_dir()
+        .map_err(|error| error.to_string())?
+        .join("fan-actuation");
+    fan_actuation::installer::install(&resource_directory)?;
     Ok(client::status())
-}
-
-#[tauri::command]
-fn open_fan_actuation_settings() {
-    fan_actuation::bootstrap::open_system_settings();
 }
 
 #[tauri::command]
@@ -228,8 +224,7 @@ pub fn run() {
             update_application_preferences,
             set_fan_speed,
             set_fan_mode,
-            register_fan_actuation_service,
-            open_fan_actuation_settings,
+            install_fan_actuation_helper,
             toggle_popover
         ])
         .setup(move |_app| {

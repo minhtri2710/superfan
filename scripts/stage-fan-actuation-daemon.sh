@@ -40,5 +40,6 @@ else
   [ -x "$binary" ] || cargo build "${build_args[@]}"
 fi
 
-mkdir -p bundle/macos/resources
-install -m 755 "$binary" bundle/macos/resources/fan-actuation-daemon
+mkdir -p bundle/macos/fan-actuation
+install -m 755 "$binary" bundle/macos/fan-actuation/fan-actuation-daemon
+chmod 755 bundle/macos/fan-actuation/install-fan-actuation.sh

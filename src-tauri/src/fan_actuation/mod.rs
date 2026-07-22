@@ -1,6 +1,6 @@
-pub mod bootstrap;
 pub mod client;
 pub mod console_user;
+pub mod installer;
 pub mod lease;
 pub mod migration;
 pub mod protocol;

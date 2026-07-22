@@ -3,8 +3,6 @@
 
 set -euo pipefail
 
-: "${APPLE_SIGNING_IDENTITY:?Set APPLE_SIGNING_IDENTITY to an Apple Development or Developer ID Application identity}"
-
 echo "🚀 Building SuperFan macOS App Bundle & DMG..."
 echo "============================================="
 
@@ -23,7 +21,7 @@ DMG_PATH="src-tauri/target/release/bundle/dmg"
 
 if [ -d "$DMG_PATH" ]; then
   APP_PATH="src-tauri/target/release/bundle/macos/SuperFan.app"
-  scripts/verify-fan-actuation-bundle.sh "$APP_PATH" --registration-capable
+  scripts/verify-fan-actuation-bundle.sh "$APP_PATH"
   cp "$DMG_PATH"/*.dmg releases/
   echo ""
   echo "✅ SuperFan macOS DMG build complete!"

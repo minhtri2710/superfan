@@ -1,4 +1,4 @@
-use super::bootstrap::{self, ServiceStatus};
+use super::installer::{self, InstallStatus};
 use super::protocol::{FanCommand, FanResponse};
 use super::socket::send_command;
 use serde::Serialize;
@@ -16,12 +16,10 @@ pub enum ActuationStatus {
 }
 
 pub fn status() -> ActuationStatus {
-    match bootstrap::status() {
-        ServiceStatus::NotRegistered | ServiceStatus::NotFound | ServiceStatus::Unknown => {
-            ActuationStatus::NotRegistered
-        }
-        ServiceStatus::RequiresApproval => ActuationStatus::RequiresApproval,
-        ServiceStatus::Enabled => match command(FanCommand::Status) {
+    match installer::status() {
+        InstallStatus::NotInstalled => ActuationStatus::NotRegistered,
+        InstallStatus::Unavailable => ActuationStatus::Unavailable,
+        InstallStatus::Installed => match command(FanCommand::Status) {
             Ok(FanResponse::Ready { .. }) => ActuationStatus::Ready,
             _ => ActuationStatus::Unavailable,
         },

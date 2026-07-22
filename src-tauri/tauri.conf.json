@@ -36,8 +36,7 @@
       "infoPlist": "Info.plist",
       "minimumSystemVersion": "13.0",
       "files": {
-        "Library/LaunchDaemons/com.superfan.fan-actuation.plist": "bundle/macos/LaunchDaemons/com.superfan.fan-actuation.plist",
-        "Resources/fan-actuation-daemon": "bundle/macos/resources/fan-actuation-daemon"
+        "Resources/fan-actuation": "bundle/macos/fan-actuation"
       }
     },
     "icon": [
