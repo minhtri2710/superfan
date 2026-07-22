@@ -1,6 +1,7 @@
 pub mod fan_actuation;
 pub mod hardware_telemetry;
 pub mod smc;
+pub mod thermal_policy;
 
 use fan_actuation::client::{self, ActuationStatus};
 use hardware_telemetry::contract::{FanActuationStatus, HardwareTelemetrySnapshot};
