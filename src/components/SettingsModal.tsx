@@ -26,14 +26,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleFanActuationAction = async () => {
     setInstalling(true);
     try {
-      if (fanActuationStatus === "not_registered") {
-        setInstallMsg("Registering Fan actuation service...");
-        const result = await invoke<string>("register_fan_actuation_service");
-        setInstallMsg(`Fan actuation service status: ${result}`);
-      } else {
-        await invoke("open_fan_actuation_settings");
-        setInstallMsg("Opened Login Items in System Settings.");
-      }
+      setInstallMsg(
+        fanActuationStatus === "not_registered"
+          ? "Installing Fan actuation helper..."
+          : "Repairing Fan actuation helper...",
+      );
+      const result = await invoke<string>("install_fan_actuation_helper");
+      setInstallMsg(`Fan actuation helper status: ${result}`);
     } catch (err: any) {
       setInstallMsg(`Error: ${err}`);
     } finally {
@@ -138,11 +137,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="text-[10px] text-slate-400">
                 {fanActuationStatus === "ready"
                   ? "Privileged service is ready"
-                  : fanActuationStatus === "requires_approval"
-                    ? "Approval is required in System Settings"
-                    : fanActuationStatus === "unavailable"
-                      ? "Service is registered but unavailable; System Auto is active"
-                      : "Required for manual fan speed modification"}
+                  : fanActuationStatus === "unavailable"
+                    ? "Helper needs repair; System Auto is active"
+                    : "Required for manual fan speed modification"}
               </div>
             </div>
           </div>
@@ -160,8 +157,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {installing
               ? "Working..."
               : fanActuationStatus === "not_registered"
-                ? "Enable Service"
-                : "Open Settings"}
+                ? "Install Helper"
+                : fanActuationStatus === "ready"
+                  ? "Reinstall Helper"
+                  : "Repair Helper"}
           </button>
         </div>
 
