@@ -4,6 +4,9 @@ pub mod hardware_telemetry;
 pub mod smc;
 pub mod thermal_policy;
 
+use application_preferences::adapters::{TauriAutostartAdapter, TauriPreferencesStore};
+use application_preferences::contract::{ApplicationPreferenceChange, ApplicationPreferences};
+use application_preferences::preferences::ApplicationPreferencesModule;
 use fan_actuation::client::{self, ActuationStatus};
 use hardware_telemetry::contract::{FanActuationStatus, HardwareTelemetrySnapshot};
 use std::sync::{Arc, Mutex};
@@ -12,9 +15,17 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, Window,
 };
-use tauri_plugin_autostart::ManagerExt;
 use thermal_policy::contract::{ThermalPolicyMode, ThermalPolicySettings, ThermalRule};
 use thermal_policy::runtime::ThermalPolicyRuntime;
+
+type PreferencesModule = ApplicationPreferencesModule<
+    TauriPreferencesStore<tauri::Wry>,
+    TauriAutostartAdapter<tauri::Wry>,
+>;
+
+struct ApplicationPreferencesState {
+    preferences: Mutex<PreferencesModule>,
+}
 
 struct ThermalPolicyState {
     settings: Mutex<ThermalPolicySettings>,
@@ -46,21 +57,18 @@ fn fetch_telemetry() -> HardwareTelemetrySnapshot {
 }
 
 #[tauri::command]
-fn is_autostart_enabled<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> bool {
-    app.autolaunch().is_enabled().unwrap_or(false)
+fn application_preferences(
+    state: tauri::State<'_, Arc<ApplicationPreferencesState>>,
+) -> ApplicationPreferences {
+    state.preferences.lock().unwrap().current()
 }
 
 #[tauri::command]
-fn toggle_autostart<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    enable: bool,
-) -> Result<bool, String> {
-    if enable {
-        app.autolaunch().enable().map_err(|e| e.to_string())?;
-    } else {
-        app.autolaunch().disable().map_err(|e| e.to_string())?;
-    }
-    Ok(enable)
+fn update_application_preferences(
+    state: tauri::State<'_, Arc<ApplicationPreferencesState>>,
+    change: ApplicationPreferenceChange,
+) -> Result<ApplicationPreferences, String> {
+    state.preferences.lock().unwrap().update(change)
 }
 
 #[tauri::command]
@@ -207,8 +215,8 @@ pub fn run() {
             select_thermal_policy_mode,
             upsert_thermal_rule,
             delete_thermal_rule,
-            is_autostart_enabled,
-            toggle_autostart,
+            application_preferences,
+            update_application_preferences,
             set_fan_speed,
             set_fan_mode,
             register_fan_actuation_service,
@@ -217,6 +225,14 @@ pub fn run() {
         ])
         .setup(move |_app| {
             let app_handle = _app.handle().clone();
+            let preferences = ApplicationPreferencesModule::load(
+                TauriPreferencesStore::new(app_handle.clone()),
+                TauriAutostartAdapter::new(app_handle.clone()),
+            )?;
+            _app.manage(Arc::new(ApplicationPreferencesState {
+                preferences: Mutex::new(preferences),
+            }));
+
             let policy_settings = thermal_policy::settings::load(&app_handle)
                 .unwrap_or_else(|_| ThermalPolicySettings::default());
             let policy_state = Arc::new(ThermalPolicyState {
