@@ -62,7 +62,7 @@ The output `.dmg` package will be generated inside the `releases/` directory.
 ### 3. CI/CD & Automated GitHub Actions Build
 The project includes a GitHub Actions pipeline ([`.github/workflows/build-macos.yml`](.github/workflows/build-macos.yml)) that automatically:
 - Builds Universal macOS App (`.app` and `.dmg`) supporting Apple Silicon and Intel Macs.
-- Packages and uploads release artifacts on every push to `main` and version tags (`v*`).
+- Packages and uploads release artifacts when a version tag (`v*`) is pushed.
 
 ---
 
@@ -78,7 +78,6 @@ Writing fan speed target values (`F0Tg`, `F0Md`, `FS!`) on modern macOS requires
 ## 📄 Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): Detailed developer & system architecture guide.
-- [CONVERSION_PLAN.md](CONVERSION_PLAN.md): Architectural design and migration details from SoloFan (Swift).
 
 ---
 
