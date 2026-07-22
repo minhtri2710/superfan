@@ -1,3 +1,4 @@
+pub mod application_preferences;
 pub mod fan_actuation;
 pub mod hardware_telemetry;
 pub mod smc;
