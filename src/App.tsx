@@ -275,7 +275,7 @@ export function App() {
           <ShieldCheck className={`w-3 h-3 ${hasSmcAccess ? "text-emerald-400" : "text-rose-400"}`} />
           SMC Status: {telemetry === null ? "Waiting" : hasSmcAccess ? "Available" : "Unavailable"}
         </span>
-        <span className="font-mono">SuperFan v1.0.0</span>
+        <span className="font-mono">SuperFan v1.0.1</span>
       </div>
     </div>
   );
