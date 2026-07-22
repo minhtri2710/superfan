@@ -711,7 +711,12 @@ static void read_battery_measurements(io_service_t service, BatteryInfoC *info)
         if (temp) {
             int raw_temp = 0;
             if (CFNumberGetValue(temp, kCFNumberIntType, &raw_temp)) {
-                double celsius = ((double)raw_temp / 10.0) - 273.15;
+                // AppleSmartBattery reports Temperature in centi-Celsius (0.01°C).
+                double celsius = (double)raw_temp / 100.0;
+                if (celsius < -20.0 || celsius > 100.0) {
+                    // Fallback for legacy deci-Kelvin (0.1K) if needed
+                    celsius = ((double)raw_temp / 10.0) - 273.15;
+                }
                 if (celsius >= -20.0 && celsius <= 100.0) {
                     info->temperature = celsius;
                     info->has_temperature = 1;
