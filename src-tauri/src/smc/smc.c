@@ -673,6 +673,74 @@ int main(int argc, char *argv[])
 
 #endif
 
+static CFNumberRef battery_number(CFDictionaryRef properties, CFStringRef key)
+{
+    if (!properties) return NULL;
+
+    CFTypeRef value = CFDictionaryGetValue(properties, key);
+    if (value && CFGetTypeID(value) == CFNumberGetTypeID()) {
+        return (CFNumberRef)value;
+    }
+
+    CFTypeRef battery_data = CFDictionaryGetValue(properties, CFSTR("BatteryData"));
+    if (!battery_data || CFGetTypeID(battery_data) != CFDictionaryGetTypeID()) {
+        return NULL;
+    }
+
+    value = CFDictionaryGetValue((CFDictionaryRef)battery_data, key);
+    return value && CFGetTypeID(value) == CFNumberGetTypeID() ? (CFNumberRef)value : NULL;
+}
+
+static void read_battery_measurements(io_service_t service, BatteryInfoC *info)
+{
+    CFMutableDictionaryRef properties = NULL;
+    if (!service || IORegistryEntryCreateCFProperties(service, &properties, kCFAllocatorDefault, 0) != KERN_SUCCESS) {
+        return;
+    }
+
+    if (!info->has_cycle_count) {
+        CFNumberRef cycle = battery_number(properties, CFSTR("CycleCount"));
+        if (cycle && CFNumberGetValue(cycle, kCFNumberIntType, &info->cycle_count)) {
+            info->has_cycle_count = 1;
+        }
+    }
+
+    if (!info->has_temperature) {
+        CFNumberRef temp = battery_number(properties, CFSTR("Temperature"));
+        if (!temp) temp = battery_number(properties, CFSTR("VirtualTemperature"));
+        if (temp) {
+            int raw_temp = 0;
+            if (CFNumberGetValue(temp, kCFNumberIntType, &raw_temp)) {
+                double celsius = ((double)raw_temp / 10.0) - 273.15;
+                if (celsius >= -20.0 && celsius <= 100.0) {
+                    info->temperature = celsius;
+                    info->has_temperature = 1;
+                }
+            }
+        }
+    }
+
+    if (!info->has_power_watts) {
+        CFNumberRef volt = battery_number(properties, CFSTR("Voltage"));
+        if (!volt) volt = battery_number(properties, CFSTR("AppleRawBatteryVoltage"));
+        CFNumberRef amp = battery_number(properties, CFSTR("InstantAmperage"));
+        if (!amp) amp = battery_number(properties, CFSTR("Amperage"));
+
+        int v_mv = 0;
+        long long a_ma = 0;
+        if (volt && amp
+            && CFNumberGetValue(volt, kCFNumberIntType, &v_mv)
+            && CFNumberGetValue(amp, kCFNumberLongLongType, &a_ma)
+            && v_mv > 0) {
+            double watts = ((double)v_mv / 1000.0) * ((double)llabs(a_ma) / 1000.0);
+            info->power_watts = (double)((long long)(watts * 10.0)) / 10.0;
+            info->has_power_watts = 1;
+        }
+    }
+
+    CFRelease(properties);
+}
+
 int fetch_battery_info(BatteryInfoC *info)
 {
     if (!info) return 0;
@@ -718,47 +786,16 @@ int fetch_battery_info(BatteryInfoC *info)
 
     io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"));
     if (service) {
-        CFNumberRef cycle = (CFNumberRef)IORegistryEntryCreateCFProperty(service, CFSTR("CycleCount"), kCFAllocatorDefault, 0);
-        if (cycle) {
-            if (CFNumberGetValue(cycle, kCFNumberIntType, &info->cycle_count)) {
-                info->has_cycle_count = 1;
-            }
-            CFRelease(cycle);
-        }
-
-        CFNumberRef temp = (CFNumberRef)IORegistryEntryCreateCFProperty(service, CFSTR("Temperature"), kCFAllocatorDefault, 0);
-        if (temp) {
-            int raw_temp = 0;
-            if (CFNumberGetValue(temp, kCFNumberIntType, &raw_temp)) {
-                info->temperature = ((double)raw_temp / 10.0) - 273.15;
-                info->has_temperature = 1;
-            }
-            CFRelease(temp);
-        }
-
-        CFNumberRef volt = (CFNumberRef)IORegistryEntryCreateCFProperty(service, CFSTR("Voltage"), kCFAllocatorDefault, 0);
-        CFNumberRef amp = (CFNumberRef)IORegistryEntryCreateCFProperty(service, CFSTR("InstantAmperage"), kCFAllocatorDefault, 0);
-        if (!amp) {
-            amp = (CFNumberRef)IORegistryEntryCreateCFProperty(service, CFSTR("Amperage"), kCFAllocatorDefault, 0);
-        }
-
-        int v_mv = 0;
-        long long a_ma = 0;
-        if (volt) CFNumberGetValue(volt, kCFNumberIntType, &v_mv);
-        if (amp) CFNumberGetValue(amp, kCFNumberLongLongType, &a_ma);
-
-        if (v_mv > 0 && amp) {
-            double v_volts = (double)v_mv / 1000.0;
-            double a_amps = (double)llabs(a_ma) / 1000.0;
-            double watts = v_volts * a_amps;
-            info->power_watts = (double)((long long)(watts * 10.0)) / 10.0;
-            info->has_power_watts = 1;
-        }
-
-        if (volt) CFRelease(volt);
-        if (amp) CFRelease(amp);
-
+        read_battery_measurements(service, info);
         IOObjectRelease(service);
+    }
+
+    if (!info->has_temperature || !info->has_power_watts || !info->has_cycle_count) {
+        io_service_t pack = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBatteryPack"));
+        if (pack) {
+            read_battery_measurements(pack, info);
+            IOObjectRelease(pack);
+        }
     }
 
     return info->has_battery;

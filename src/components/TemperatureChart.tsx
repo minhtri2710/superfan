@@ -57,7 +57,11 @@ export const TemperatureChart: React.FC<TemperatureChartProps> = ({ history, uni
       </div>
 
       <div className="relative w-full h-16 bg-slate-950/60 rounded-lg overflow-hidden border border-white/5 pt-1">
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
+          className="w-full h-full overflow-visible"
+        >
           <defs>
             <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.3" />
@@ -70,8 +74,24 @@ export const TemperatureChart: React.FC<TemperatureChartProps> = ({ history, uni
           </defs>
 
           {/* Grid lines */}
-          <line x1="0" y1={height * 0.25} x2={width} y2={height * 0.25} stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
-          <line x1="0" y1={height * 0.75} x2={width} y2={height * 0.75} stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+          <line
+            x1="0"
+            y1={height * 0.25}
+            x2={width}
+            y2={height * 0.25}
+            stroke="rgba(255,255,255,0.05)"
+            strokeDasharray="3 3"
+            vectorEffect="non-scaling-stroke"
+          />
+          <line
+            x1="0"
+            y1={height * 0.75}
+            x2={width}
+            y2={height * 0.75}
+            stroke="rgba(255,255,255,0.05)"
+            strokeDasharray="3 3"
+            vectorEffect="non-scaling-stroke"
+          />
 
           {/* Area under CPU */}
           <polygon
@@ -83,6 +103,7 @@ export const TemperatureChart: React.FC<TemperatureChartProps> = ({ history, uni
             fill="none"
             stroke="#22d3ee"
             strokeWidth="2"
+            vectorEffect="non-scaling-stroke"
             strokeLinecap="round"
             strokeLinejoin="round"
             points={cpuPoints}
@@ -98,6 +119,7 @@ export const TemperatureChart: React.FC<TemperatureChartProps> = ({ history, uni
                 fill="none"
                 stroke="#fbbf24"
                 strokeWidth="1.5"
+                vectorEffect="non-scaling-stroke"
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 points={gpuPoints}
