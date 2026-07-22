@@ -141,7 +141,6 @@ pub fn get_cpu_temperature() -> Option<f64> {
     if valid_temps.is_empty() {
         None
     } else {
-        // Return average of highest valid core temperatures
         valid_temps.sort_by(|a, b| b.partial_cmp(a).unwrap());
         let top_count = std::cmp::min(4, valid_temps.len());
         let sum: f64 = valid_temps.iter().take(top_count).sum();
@@ -178,6 +177,32 @@ pub fn get_gpu_temperature() -> Option<f64> {
     } else {
         None
     }
+}
+
+pub fn get_all_sensors() -> Vec<SensorReading> {
+    let mut sensors = Vec::new();
+    let mut core_idx = 1;
+
+    for key in CPU_APPLE_SILICON_KEYS.iter().chain(CPU_INTEL_KEYS.iter()) {
+        if let Some(t) = read_smc_key(key) {
+            if t > 15.0 && t < 125.0 {
+                let label = if key.starts_with("Te") {
+                    format!("E-Core {}", core_idx)
+                } else if key.starts_with("Tp") {
+                    format!("P-Core {}", core_idx)
+                } else {
+                    format!("CPU Core {}", core_idx)
+                };
+                sensors.push(SensorReading {
+                    key: key.to_string(),
+                    label,
+                    value: (t as f64 * 10.0).round() / 10.0,
+                });
+                core_idx += 1;
+            }
+        }
+    }
+    sensors
 }
 
 pub fn get_fan_readings() -> Vec<FanReading> {
@@ -240,8 +265,10 @@ pub fn get_telemetry(demo_mode: bool) -> TelemetryData {
             gpu_temp: Some((gpu_sim * 10.0).round() / 10.0),
             max_cpu_temp: Some(((cpu_sim + 5.0) * 10.0).round() / 10.0),
             sensors: vec![
-                SensorReading { key: "Tp09".into(), label: "CPU P-Core".into(), value: cpu_sim },
-                SensorReading { key: "Tg0D".into(), label: "GPU Core".into(), value: gpu_sim },
+                SensorReading { key: "Tp01".into(), label: "P-Core 1".into(), value: (cpu_sim * 10.0).round() / 10.0 },
+                SensorReading { key: "Tp05".into(), label: "P-Core 2".into(), value: ((cpu_sim + 1.2) * 10.0).round() / 10.0 },
+                SensorReading { key: "Te05".into(), label: "E-Core 1".into(), value: ((cpu_sim - 3.5) * 10.0).round() / 10.0 },
+                SensorReading { key: "Tg0D".into(), label: "GPU Core".into(), value: (gpu_sim * 10.0).round() / 10.0 },
             ],
             fans: vec![
                 FanReading {
@@ -280,6 +307,7 @@ pub fn get_telemetry(demo_mode: bool) -> TelemetryData {
     let has_smc = ensure_smc_open();
     let cpu_temp = get_cpu_temperature();
     let gpu_temp = get_gpu_temperature();
+    let sensors = get_all_sensors();
     let fans = get_fan_readings();
     let battery = get_battery_reading();
 
@@ -292,7 +320,7 @@ pub fn get_telemetry(demo_mode: bool) -> TelemetryData {
         cpu_temp,
         gpu_temp,
         max_cpu_temp: cpu_temp,
-        sensors: vec![],
+        sensors,
         fans,
         battery,
         has_smc_access: has_smc,

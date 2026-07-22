@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Header } from "./components/Header";
 import { TemperatureGauge } from "./components/TemperatureGauge";
 import { TemperatureChart } from "./components/TemperatureChart";
+import { CoreBreakdown } from "./components/CoreBreakdown";
 import { FanCard } from "./components/FanCard";
 import { BatteryCard } from "./components/BatteryCard";
 import { SettingsModal } from "./components/SettingsModal";
@@ -84,7 +85,12 @@ export function App() {
     cpu_temp: 48.5,
     gpu_temp: 43.2,
     max_cpu_temp: 52.0,
-    sensors: [],
+    sensors: [
+      { key: "Tp01", label: "P-Core 1", value: 48.5 },
+      { key: "Tp05", label: "P-Core 2", value: 49.7 },
+      { key: "Te05", label: "E-Core 1", value: 45.0 },
+      { key: "Tg0D", label: "GPU Core", value: 43.2 },
+    ],
     fans: [
       {
         id: 0,
@@ -148,6 +154,9 @@ export function App() {
 
             {/* Temperature History Chart */}
             <TemperatureChart history={tempHistory} unit={settings.tempUnit} />
+
+            {/* Per-Core Thermal Breakdown */}
+            <CoreBreakdown sensors={currentTelemetry.sensors} unit={settings.tempUnit} />
 
             {/* Fans Section */}
             <div className="space-y-2">
