@@ -272,12 +272,12 @@ export function App() {
                 <FanCard
                   key={fan.id}
                   fan={fan}
+                  fanActuationStatus={fanActuationStatus}
+                  thermalPolicyMode={thermalPolicy.mode}
                   onSetSpeed={handleSetFanSpeed}
                   onSetMode={handleSetFanMode}
                   onEnableHelper={handleEnableHelper}
-                  actuationAvailable={
-                    fanActuationStatus === "ready" && thermalPolicy.mode === "system_auto"
-                  }
+                  onSelectPolicyMode={handleSelectPolicyMode}
                 />
               ))}
 
@@ -317,13 +317,13 @@ export function App() {
             Update v{updateRelease.version}
           </button>
         ) : (
-          <span className="font-mono">SuperFan v1.0.6</span>
+          <span className="font-mono">SuperFan v1.0.7</span>
         )}
       </div>
 
       {showUpdateModal && updateRelease && (
         <UpdateModal
-          currentVersion="1.0.6"
+          currentVersion="1.0.7"
           release={updateRelease}
           onClose={() => setShowUpdateModal(false)}
         />

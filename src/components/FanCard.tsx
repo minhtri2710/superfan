@@ -1,25 +1,32 @@
 import React, { useState } from "react";
-import { Fan, ShieldCheck } from "lucide-react";
-import { FanReading } from "../types";
+import { Fan, ShieldCheck, ShieldAlert } from "lucide-react";
+import { FanReading, ThermalPolicyMode } from "../types";
 
 interface FanCardProps {
   fan: FanReading;
-  actuationAvailable: boolean;
+  fanActuationStatus: "not_registered" | "ready" | "unavailable";
+  thermalPolicyMode: ThermalPolicyMode;
   onSetSpeed: (fanId: number, rpm: number) => void;
   onSetMode: (fanId: number, mode: "auto" | "manual", rpm?: number) => void;
   onEnableHelper?: () => void;
+  onSelectPolicyMode?: (mode: ThermalPolicyMode) => void;
 }
 
 export const FanCard: React.FC<FanCardProps> = ({
   fan,
-  actuationAvailable,
+  fanActuationStatus,
+  thermalPolicyMode,
   onSetSpeed,
   onSetMode,
   onEnableHelper,
+  onSelectPolicyMode,
 }) => {
   const minSpeedRpm = fan.min_speed_rpm ?? fan.speed_rpm;
   const maxSpeedRpm = fan.max_speed_rpm ?? fan.speed_rpm;
   const [sliderVal, setSliderVal] = useState<number>(fan.target_speed_rpm ?? fan.speed_rpm);
+
+  const isReady = fanActuationStatus === "ready";
+  const isPolicyActive = thermalPolicyMode !== "system_auto";
 
   const percent = Math.round(
     ((fan.speed_rpm - minSpeedRpm) / (maxSpeedRpm - minSpeedRpm || 1)) * 100
@@ -31,6 +38,17 @@ export const FanCard: React.FC<FanCardProps> = ({
     fan.speed_rpm > 0 && maxSpeedRpm > 0
       ? Math.max(0.3, 3 - (fan.speed_rpm / maxSpeedRpm) * 2.7)
       : 0;
+
+  const handleManualClick = () => {
+    if (isPolicyActive && onSelectPolicyMode) {
+      onSelectPolicyMode("system_auto");
+    }
+    onSetMode(fan.id, "manual", sliderVal);
+  };
+
+  const handleAutoClick = () => {
+    onSetMode(fan.id, "auto");
+  };
 
   return (
     <div className="glass-card p-3.5 rounded-xl flex flex-col gap-3">
@@ -54,10 +72,10 @@ export const FanCard: React.FC<FanCardProps> = ({
 
         <div className="flex items-center gap-1 bg-slate-900/60 p-0.5 rounded-lg border border-white/5 text-[10px]">
           <button
-            onClick={() => onSetMode(fan.id, "auto")}
-            disabled={!actuationAvailable}
+            onClick={handleAutoClick}
+            disabled={!isReady}
             className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-              fan.mode === "system_auto"
+              fan.mode === "system_auto" && !isPolicyActive
                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
                 : "text-slate-400 hover:text-white"
             }`}
@@ -65,10 +83,10 @@ export const FanCard: React.FC<FanCardProps> = ({
             Auto
           </button>
           <button
-            onClick={() => onSetMode(fan.id, "manual", sliderVal)}
-            disabled={!actuationAvailable}
+            onClick={handleManualClick}
+            disabled={!isReady}
             className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-              fan.mode === "manual"
+              fan.mode === "manual" || isPolicyActive
                 ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
                 : "text-slate-400 hover:text-white"
             }`}
@@ -86,18 +104,33 @@ export const FanCard: React.FC<FanCardProps> = ({
         <span className="text-xs font-bold text-cyan-400 font-mono">{clampedPercent}%</span>
       </div>
 
-      {!actuationAvailable ? (
+      {!isReady ? (
         <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-200">
           <div className="flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-            <span>Fan control locked (System Auto)</span>
+            <ShieldAlert className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+            <span>Privileged helper required for manual fan control</span>
           </div>
           {onEnableHelper && (
             <button
               onClick={onEnableHelper}
-              className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 font-semibold transition-all"
+              className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 font-semibold transition-all shrink-0"
             >
               Enable Control
+            </button>
+          )}
+        </div>
+      ) : isPolicyActive ? (
+        <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-[10px] text-cyan-200">
+          <div className="flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span>Managed by Thermal Rules ({thermalPolicyMode})</span>
+          </div>
+          {onSelectPolicyMode && (
+            <button
+              onClick={() => onSelectPolicyMode("system_auto")}
+              className="px-2 py-0.5 rounded bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-300 font-semibold transition-all shrink-0"
+            >
+              Switch to Manual
             </button>
           )}
         </div>
@@ -115,7 +148,6 @@ export const FanCard: React.FC<FanCardProps> = ({
             value={sliderVal}
             onChange={(e) => setSliderVal(Number(e.target.value))}
             onMouseUp={() => onSetSpeed(fan.id, sliderVal)}
-            disabled={!actuationAvailable}
             className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
           />
         </div>
