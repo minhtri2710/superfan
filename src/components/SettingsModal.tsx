@@ -70,7 +70,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setUpdateStatusMsg(`New version v${res.latestRelease.version} is available!`);
         onShowUpdateModal(res.latestRelease);
       } else {
-        setUpdateStatusMsg("SuperFan is up to date! (v1.0.4)");
+        setUpdateStatusMsg("SuperFan is up to date! (v1.0.5)");
       }
     } catch (err: any) {
       setUpdateStatusMsg(`Error: ${err?.message || err}`);
@@ -169,7 +169,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <Sparkles className="w-4 h-4 text-amber-400" />
             <div>
               <div className="text-xs font-semibold text-white">Software Update</div>
-              <div className="text-[10px] text-slate-400">Version 1.0.4</div>
+              <div className="text-[10px] text-slate-400">Version 1.0.5</div>
             </div>
           </div>
 
@@ -212,24 +212,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={handleFanActuationAction}
-            disabled={installing}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md ${
-              fanActuationStatus === "ready"
-                ? "bg-slate-800 text-slate-300 hover:bg-slate-700 border border-white/10"
-                : "bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-orange-500/20"
-            }`}
-          >
-            <Wrench className="w-3 h-3" />
-            {installing
-              ? "Working..."
-              : fanActuationStatus === "not_registered"
-                ? "Install Helper"
-                : fanActuationStatus === "ready"
-                  ? "Reinstall Helper"
+          {fanActuationStatus === "ready" ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Active</span>
+            </div>
+          ) : (
+            <button
+              onClick={handleFanActuationAction}
+              disabled={installing}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-orange-500/20"
+            >
+              <Wrench className="w-3 h-3" />
+              {installing
+                ? "Installing..."
+                : fanActuationStatus === "not_registered"
+                  ? "Install Helper"
                   : "Repair Helper"}
-          </button>
+            </button>
+          )}
         </div>
 
         {installMsg && (

@@ -7,6 +7,7 @@ interface FanCardProps {
   actuationAvailable: boolean;
   onSetSpeed: (fanId: number, rpm: number) => void;
   onSetMode: (fanId: number, mode: "auto" | "manual", rpm?: number) => void;
+  onEnableHelper?: () => void;
 }
 
 export const FanCard: React.FC<FanCardProps> = ({
@@ -14,6 +15,7 @@ export const FanCard: React.FC<FanCardProps> = ({
   actuationAvailable,
   onSetSpeed,
   onSetMode,
+  onEnableHelper,
 }) => {
   const minSpeedRpm = fan.min_speed_rpm ?? fan.speed_rpm;
   const maxSpeedRpm = fan.max_speed_rpm ?? fan.speed_rpm;
@@ -85,9 +87,19 @@ export const FanCard: React.FC<FanCardProps> = ({
       </div>
 
       {!actuationAvailable ? (
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-200">
-          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-          <span>Fan actuation unavailable; System Auto is active</span>
+        <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-200">
+          <div className="flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+            <span>Fan control locked (System Auto)</span>
+          </div>
+          {onEnableHelper && (
+            <button
+              onClick={onEnableHelper}
+              className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 font-semibold transition-all"
+            >
+              Enable Control
+            </button>
+          )}
         </div>
       ) : fan.mode === "manual" && fan.min_speed_rpm !== null && fan.max_speed_rpm !== null ? (
         <div className="flex flex-col gap-1.5">

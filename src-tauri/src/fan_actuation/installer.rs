@@ -56,6 +56,9 @@ fn installed_artifact(path: &Path, required_mode: u32) -> InstalledArtifact {
 }
 
 pub fn install(resource_directory: &Path) -> Result<InstallStatus, String> {
+    if status() == InstallStatus::Installed && crate::fan_actuation::client::status() == crate::fan_actuation::client::ActuationStatus::Ready {
+        return Ok(InstallStatus::Installed);
+    }
     let installer = validate_resources(resource_directory)?;
     let script = resource_directory.join("authorize-install.applescript");
     let output = Command::new("/usr/bin/osascript")

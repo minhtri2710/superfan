@@ -102,6 +102,16 @@ export function App() {
     };
   }, []);
 
+  const handleEnableHelper = async () => {
+    try {
+      await invoke("install_fan_actuation_helper");
+      const updated = await invoke<HardwareTelemetrySnapshot>("fetch_telemetry");
+      recordSnapshot(updated);
+    } catch (err) {
+      console.error("Enable helper failed:", err);
+    }
+  };
+
   const handleSetFanSpeed = async (fanId: number, rpm: number) => {
     try {
       await invoke("set_fan_speed", { fanId, rpm });
@@ -264,6 +274,7 @@ export function App() {
                   fan={fan}
                   onSetSpeed={handleSetFanSpeed}
                   onSetMode={handleSetFanMode}
+                  onEnableHelper={handleEnableHelper}
                   actuationAvailable={
                     fanActuationStatus === "ready" && thermalPolicy.mode === "system_auto"
                   }
@@ -306,13 +317,13 @@ export function App() {
             Update v{updateRelease.version}
           </button>
         ) : (
-          <span className="font-mono">SuperFan v1.0.4</span>
+          <span className="font-mono">SuperFan v1.0.5</span>
         )}
       </div>
 
       {showUpdateModal && updateRelease && (
         <UpdateModal
-          currentVersion="1.0.4"
+          currentVersion="1.0.5"
           release={updateRelease}
           onClose={() => setShowUpdateModal(false)}
         />
