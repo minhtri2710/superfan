@@ -1,4 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { invoke } from "@tauri-apps/api/core";
 
 export interface ReleaseInfo {
   version: string;
@@ -18,7 +19,7 @@ export interface UpdateCheckResult {
 
 const REPO_OWNER = "minhtri2710";
 const REPO_NAME = "superfan";
-const CURRENT_VERSION = "1.0.8";
+const CURRENT_VERSION = "1.0.9";
 
 export function cleanVersion(v: string): string {
   return v.replace(/^v/i, "").trim();
@@ -127,6 +128,10 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
     currentVersion: CURRENT_VERSION,
     error: "GitHub API rate limit reached (HTTP 403). Try again later.",
   };
+}
+
+export async function performAutoInstall(downloadUrl: string): Promise<void> {
+  await invoke("install_app_update", { downloadUrl });
 }
 
 export async function openReleasePage(url: string) {

@@ -228,7 +228,8 @@ pub fn run() {
             set_fan_speed,
             set_fan_mode,
             install_fan_actuation_helper,
-            toggle_popover
+            toggle_popover,
+            install_app_update
         ])
         .setup(move |_app| {
             #[cfg(target_os = "macos")]
@@ -340,4 +341,69 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+async fn install_app_update(download_url: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let exe_str = current_exe.to_string_lossy();
+
+        let app_path = if let Some(pos) = exe_str.rfind(".app/") {
+            exe_str[..pos + 4].to_string()
+        } else {
+            "/Applications/SuperFan.app".to_string()
+        };
+
+        let temp_dmg = "/tmp/superfan_update.dmg";
+        let mount_point = "/tmp/superfan_mount";
+
+        let _ = std::process::Command::new("/sbin/hdiutil")
+            .args(["detach", mount_point, "-quiet"])
+            .output();
+        let _ = std::fs::remove_file(temp_dmg);
+        let _ = std::fs::remove_dir_all(mount_point);
+
+        let curl_status = std::process::Command::new("/usr/bin/curl")
+            .args(["-fL", "-o", temp_dmg, &download_url])
+            .status()
+            .map_err(|e| format!("Failed to download update: {e}"))?;
+
+        if !curl_status.success() {
+            return Err("Failed to download update file from GitHub.".into());
+        }
+
+        let mount_status = std::process::Command::new("/sbin/hdiutil")
+            .args(["attach", temp_dmg, "-mountpoint", mount_point, "-nobrowse", "-quiet"])
+            .status()
+            .map_err(|e| format!("Failed to mount update package: {e}"))?;
+
+        if !mount_status.success() {
+            return Err("Failed to mount DMG package.".into());
+        }
+
+        let source_app = format!("{mount_point}/SuperFan.app");
+        let staged_app = format!("{app_path}.new");
+
+        let copy_status = std::process::Command::new("/bin/cp")
+            .args(["-R", &source_app, &staged_app])
+            .status()
+            .map_err(|e| format!("Failed to stage updated app: {e}"))?;
+
+        if !copy_status.success() {
+            let _ = std::process::Command::new("/sbin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
+            return Err("Failed to copy update into target folder.".into());
+        }
+
+        let _ = std::process::Command::new("/bin/rm").args(["-rf", &app_path]).output();
+        let _ = std::process::Command::new("/bin/mv").args([&staged_app, &app_path]).output();
+
+        let _ = std::process::Command::new("/sbin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
+        let _ = std::fs::remove_file(temp_dmg);
+
+        let _ = std::process::Command::new("/usr/bin/open").arg(&app_path).spawn();
+        std::process::exit(0);
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

@@ -1,6 +1,6 @@
-import React from "react";
-import { ReleaseInfo, openReleasePage } from "../services/updater";
-import { Sparkles, ExternalLink, Download, X, Calendar, ArrowRight } from "lucide-react";
+import React, { useState } from "react";
+import { ReleaseInfo, performAutoInstall, openReleasePage } from "../services/updater";
+import { Sparkles, ExternalLink, Download, X, Calendar, ArrowRight, RefreshCw } from "lucide-react";
 
 interface UpdateModalProps {
   currentVersion: string;
@@ -13,8 +13,23 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   release,
   onClose,
 }) => {
-  const handleDownload = () => {
-    openReleasePage(release.downloadUrl || release.htmlUrl);
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  const handleInstallAction = async () => {
+    if (release.downloadUrl && release.downloadUrl.endsWith(".dmg")) {
+      setUpdating(true);
+      setUpdateError(null);
+      try {
+        await performAutoInstall(release.downloadUrl);
+      } catch (err: any) {
+        setUpdateError(err?.message || "Auto-installation failed. Opening release download link instead.");
+        setUpdating(false);
+        openReleasePage(release.downloadUrl || release.htmlUrl);
+      }
+    } else {
+      openReleasePage(release.downloadUrl || release.htmlUrl);
+    }
   };
 
   return (
@@ -39,7 +54,8 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            disabled={updating}
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
           >
             <X className="w-4 h-4" />
           </button>
@@ -76,27 +92,49 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
               {release.body}
             </div>
           </div>
+
+          {/* Auto Updating Indicator */}
+          {updating && (
+            <div className="glass-card p-3 rounded-xl flex items-center gap-2 bg-slate-900/80 border border-amber-500/30 text-xs text-amber-300 font-medium">
+              <RefreshCw className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
+              <span>Downloading update & replacing application...</span>
+            </div>
+          )}
+
+          {updateError && (
+            <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[10px] font-mono text-rose-200">
+              {updateError}
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}
         <div className="p-3 bg-slate-950/80 border-t border-white/10 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-all"
+            disabled={updating}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-50"
           >
             Later
           </button>
 
           <button
-            onClick={handleDownload}
-            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all"
+            onClick={handleInstallAction}
+            disabled={updating}
+            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all disabled:opacity-50"
           >
-            {release.downloadUrl ? (
+            {updating ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : release.downloadUrl?.endsWith(".dmg") ? (
               <Download className="w-3.5 h-3.5" />
             ) : (
               <ExternalLink className="w-3.5 h-3.5" />
             )}
-            Download v{release.version}
+            {updating
+              ? "Updating..."
+              : release.downloadUrl?.endsWith(".dmg")
+              ? `Install & Relaunch v${release.version}`
+              : `Download v${release.version}`}
           </button>
         </div>
       </div>

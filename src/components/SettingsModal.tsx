@@ -70,7 +70,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setUpdateStatusMsg(`New version v${res.latestRelease.version} is available!`);
         onShowUpdateModal(res.latestRelease);
       } else {
-        setUpdateStatusMsg("SuperFan is up to date! (v1.0.8)");
+        setUpdateStatusMsg("SuperFan is up to date! (v1.0.9)");
       }
     } catch (err: any) {
       setUpdateStatusMsg(`Error: ${err?.message || err}`);
@@ -169,7 +169,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <Sparkles className="w-4 h-4 text-amber-400" />
             <div>
               <div className="text-xs font-semibold text-white">Software Update</div>
-              <div className="text-[10px] text-slate-400">Version 1.0.8</div>
+              <div className="text-[10px] text-slate-400">Version 1.0.9</div>
             </div>
           </div>
 
