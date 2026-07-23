@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { ReleaseInfo, performAutoUpdate, openReleasePage } from "../services/updater";
-import { Sparkles, ExternalLink, Download, X, Calendar, ArrowRight, RefreshCw } from "lucide-react";
+import React from "react";
+import { ReleaseInfo, openReleasePage } from "../services/updater";
+import { Sparkles, ExternalLink, Download, X, Calendar, ArrowRight } from "lucide-react";
 
 interface UpdateModalProps {
   currentVersion: string;
@@ -13,28 +13,8 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   release,
   onClose,
 }) => {
-  const [updating, setUpdating] = useState(false);
-  const [progressPercent, setProgressPercent] = useState<number | null>(null);
-  const [updateError, setUpdateError] = useState<string | null>(null);
-
-  const handleUpdateAction = async () => {
-    if (release.tauriUpdate) {
-      setUpdating(true);
-      setUpdateError(null);
-      try {
-        await performAutoUpdate(release, (downloaded, total) => {
-          if (total && total > 0) {
-            setProgressPercent(Math.round((downloaded / total) * 100));
-          }
-        });
-      } catch (err: any) {
-        setUpdateError(err?.message || "Auto-update failed. Opening release link instead.");
-        setUpdating(false);
-        openReleasePage(release.downloadUrl || release.htmlUrl);
-      }
-    } else {
-      openReleasePage(release.downloadUrl || release.htmlUrl);
-    }
+  const handleDownload = () => {
+    openReleasePage(release.downloadUrl || release.htmlUrl);
   };
 
   return (
@@ -59,8 +39,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
 
           <button
             onClick={onClose}
-            disabled={updating}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -97,60 +76,27 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
               {release.body}
             </div>
           </div>
-
-          {/* Download Progress Bar */}
-          {updating && (
-            <div className="glass-card p-3 rounded-xl flex flex-col gap-2 bg-slate-900/80 border border-amber-500/30">
-              <div className="flex items-center justify-between text-xs text-amber-300 font-medium">
-                <span className="flex items-center gap-1.5">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                  Downloading & Installing...
-                </span>
-                <span className="font-mono">{progressPercent !== null ? `${progressPercent}%` : ""}</span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-300"
-                  style={{ width: `${progressPercent ?? 100}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          {updateError && (
-            <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[10px] font-mono text-rose-200">
-              {updateError}
-            </div>
-          )}
         </div>
 
         {/* Action Buttons */}
         <div className="p-3 bg-slate-950/80 border-t border-white/10 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
-            disabled={updating}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-all"
           >
             Later
           </button>
 
           <button
-            onClick={handleUpdateAction}
-            disabled={updating}
-            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all disabled:opacity-50"
+            onClick={handleDownload}
+            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all"
           >
-            {updating ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : release.tauriUpdate ? (
+            {release.downloadUrl ? (
               <Download className="w-3.5 h-3.5" />
             ) : (
               <ExternalLink className="w-3.5 h-3.5" />
             )}
-            {updating
-              ? "Updating..."
-              : release.tauriUpdate
-              ? `Install & Relaunch v${release.version}`
-              : `Download v${release.version}`}
+            Download v{release.version}
           </button>
         </div>
       </div>

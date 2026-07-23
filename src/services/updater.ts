@@ -1,6 +1,4 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { check as checkTauriUpdate, Update } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
 
 export interface ReleaseInfo {
   version: string;
@@ -9,7 +7,6 @@ export interface ReleaseInfo {
   htmlUrl: string;
   publishedAt: string;
   downloadUrl?: string;
-  tauriUpdate?: Update;
 }
 
 export interface UpdateCheckResult {
@@ -21,7 +18,7 @@ export interface UpdateCheckResult {
 
 const REPO_OWNER = "minhtri2710";
 const REPO_NAME = "superfan";
-const CURRENT_VERSION = "1.0.5";
+const CURRENT_VERSION = "1.0.6";
 
 export function cleanVersion(v: string): string {
   return v.replace(/^v/i, "").trim();
@@ -42,28 +39,6 @@ export function compareVersions(v1: string, v2: string): number {
 }
 
 export async function checkForUpdates(): Promise<UpdateCheckResult> {
-  // 1. Try Native Tauri Updater first
-  try {
-    const update = await checkTauriUpdate();
-    if (update) {
-      return {
-        hasUpdate: true,
-        currentVersion: CURRENT_VERSION,
-        latestRelease: {
-          version: update.version,
-          name: `SuperFan v${update.version}`,
-          body: update.body || "New update available with performance & stability improvements.",
-          htmlUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/v${update.version}`,
-          publishedAt: update.date || new Date().toLocaleDateString(),
-          tauriUpdate: update,
-        },
-      };
-    }
-  } catch {
-    // Native updater fallback to GitHub Releases API
-  }
-
-  // 2. Fallback to GitHub Releases API
   try {
     const response = await fetch(
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
@@ -120,42 +95,6 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
       currentVersion: CURRENT_VERSION,
       error: err?.message || "Failed to check for updates.",
     };
-  }
-}
-
-export async function performAutoUpdate(
-  release: ReleaseInfo,
-  onProgress?: (downloaded: number, contentLength?: number) => void
-): Promise<void> {
-  if (release.tauriUpdate) {
-    let downloaded = 0;
-    let contentLength: number | undefined;
-
-    await release.tauriUpdate.downloadAndInstall((event) => {
-      switch (event.event) {
-        case "Started":
-          contentLength = event.data.contentLength;
-          if (onProgress) onProgress(0, contentLength);
-          break;
-        case "Progress":
-          downloaded += event.data.chunkLength;
-          if (onProgress) onProgress(downloaded, contentLength);
-          break;
-        case "Finished":
-          if (onProgress) onProgress(downloaded || 100, contentLength || 100);
-          break;
-      }
-    });
-
-    await relaunch();
-  } else {
-    // If native updater package is not attached, open download URL / release page
-    const targetUrl = release.downloadUrl || release.htmlUrl;
-    try {
-      await openUrl(targetUrl);
-    } catch {
-      window.open(targetUrl, "_blank");
-    }
   }
 }
 
