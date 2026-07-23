@@ -18,7 +18,7 @@ export interface UpdateCheckResult {
 
 const REPO_OWNER = "minhtri2710";
 const REPO_NAME = "superfan";
-const CURRENT_VERSION = "1.0.7";
+const CURRENT_VERSION = "1.0.8";
 
 export function cleanVersion(v: string): string {
   return v.replace(/^v/i, "").trim();
@@ -39,6 +39,7 @@ export function compareVersions(v1: string, v2: string): number {
 }
 
 export async function checkForUpdates(): Promise<UpdateCheckResult> {
+  // Strategy 1: GitHub REST API
   try {
     const response = await fetch(
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
@@ -49,53 +50,83 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
       }
     );
 
-    if (!response.ok) {
+    if (response.ok) {
+      const data = await response.json();
+      const rawTag = data.tag_name || "";
+      const latestVer = cleanVersion(rawTag);
+
+      let downloadUrl: string | undefined = undefined;
+      if (Array.isArray(data.assets)) {
+        const asset = data.assets.find((a: any) =>
+          a.name?.endsWith(".dmg") || a.name?.endsWith(".zip") || a.name?.endsWith(".tar.gz")
+        );
+        if (asset) {
+          downloadUrl = asset.browser_download_url;
+        }
+      }
+
+      const releaseInfo: ReleaseInfo = {
+        version: latestVer,
+        name: data.name || rawTag,
+        body: data.body || "No release notes provided.",
+        htmlUrl: data.html_url || `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases`,
+        publishedAt: data.published_at
+          ? new Date(data.published_at).toLocaleDateString()
+          : "Recently",
+        downloadUrl,
+      };
+
+      const hasUpdate = compareVersions(CURRENT_VERSION, latestVer) > 0;
+
       return {
-        hasUpdate: false,
+        hasUpdate,
         currentVersion: CURRENT_VERSION,
-        error: response.status === 404 ? "No releases found." : `GitHub error (${response.status})`,
+        latestRelease: releaseInfo,
       };
     }
+  } catch {
+    // Ignore and proceed to Fallback Strategy
+  }
 
-    const data = await response.json();
-    const rawTag = data.tag_name || "";
-    const latestVer = cleanVersion(rawTag);
+  // Strategy 2: Fallback to Raw GitHub CDN (bypass 403 API rate limit)
+  try {
+    const rawResponse = await fetch(
+      `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/package.json`
+    );
 
-    let downloadUrl: string | undefined = undefined;
-    if (Array.isArray(data.assets)) {
-      const asset = data.assets.find((a: any) =>
-        a.name?.endsWith(".dmg") || a.name?.endsWith(".zip") || a.name?.endsWith(".tar.gz")
-      );
-      if (asset) {
-        downloadUrl = asset.browser_download_url;
-      }
+    if (rawResponse.ok) {
+      const pkg = await rawResponse.json();
+      const latestVer = cleanVersion(pkg.version || CURRENT_VERSION);
+      const hasUpdate = compareVersions(CURRENT_VERSION, latestVer) > 0;
+
+      return {
+        hasUpdate,
+        currentVersion: CURRENT_VERSION,
+        latestRelease: hasUpdate
+          ? {
+              version: latestVer,
+              name: `SuperFan v${latestVer}`,
+              body: "A new version of SuperFan is available on GitHub Releases.",
+              htmlUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/v${latestVer}`,
+              publishedAt: "Latest",
+              downloadUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
+            }
+          : undefined,
+      };
     }
-
-    const releaseInfo: ReleaseInfo = {
-      version: latestVer,
-      name: data.name || rawTag,
-      body: data.body || "No release notes provided.",
-      htmlUrl: data.html_url || `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases`,
-      publishedAt: data.published_at
-        ? new Date(data.published_at).toLocaleDateString()
-        : "Recently",
-      downloadUrl,
-    };
-
-    const hasUpdate = compareVersions(CURRENT_VERSION, latestVer) > 0;
-
-    return {
-      hasUpdate,
-      currentVersion: CURRENT_VERSION,
-      latestRelease: releaseInfo,
-    };
-  } catch (err: any) {
+  } catch (rawErr: any) {
     return {
       hasUpdate: false,
       currentVersion: CURRENT_VERSION,
-      error: err?.message || "Failed to check for updates.",
+      error: rawErr?.message || "Failed to check for updates.",
     };
   }
+
+  return {
+    hasUpdate: false,
+    currentVersion: CURRENT_VERSION,
+    error: "GitHub API rate limit reached (HTTP 403). Try again later.",
+  };
 }
 
 export async function openReleasePage(url: string) {
