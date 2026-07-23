@@ -22,6 +22,7 @@ rollback() {
   if $had_helper && [ -e "$backup_dir/helper" ]; then /bin/mv "$backup_dir/helper" "$destination_helper"; fi
   if $had_plist && [ -e "$backup_dir/service.plist" ]; then /bin/mv "$backup_dir/service.plist" "$destination_plist"; fi
   if $had_plist; then
+    /bin/launchctl enable "system/$label" 2>/dev/null || true
     /bin/launchctl bootstrap system "$destination_plist" 2>/dev/null || true
     /bin/launchctl kickstart -k "system/$label" 2>/dev/null || true
   fi
@@ -73,6 +74,16 @@ fi
 
 mutation_started=true
 /bin/launchctl bootout "system/$label" 2>/dev/null || true
+/bin/launchctl disable "system/$label" 2>/dev/null || true
+
+# Wait up to 2 seconds for launchd to finish tearing down any previous instance
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if ! /bin/launchctl print "system/$label" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.2
+done
+
 mkdir -p /Library/PrivilegedHelperTools /Library/LaunchDaemons
 
 if [ -e "$destination_helper" ]; then
@@ -86,13 +97,27 @@ fi
 
 /bin/mv "$staging_dir/helper" "$destination_helper"
 /bin/mv "$staging_dir/service.plist" "$destination_plist"
+
+/bin/launchctl enable "system/$label" 2>/dev/null || true
+
 if ! /bin/launchctl bootstrap system "$destination_plist"; then
-  echo "could not bootstrap Fan actuation helper; previous installation was restored" >&2
-  exit 1
+  # If launchd considers the service registered, attempt kickstart or retry
+  if /bin/launchctl print "system/$label" >/dev/null 2>&1; then
+    /bin/launchctl kickstart -k "system/$label" 2>/dev/null || true
+  else
+    sleep 1
+    if ! /bin/launchctl bootstrap system "$destination_plist"; then
+      echo "could not bootstrap Fan actuation helper; previous installation was restored" >&2
+      exit 1
+    fi
+  fi
 fi
+
 if ! /bin/launchctl kickstart -k "system/$label"; then
-  echo "could not start Fan actuation helper; previous installation was restored" >&2
-  exit 1
+  if ! /bin/launchctl print "system/$label" >/dev/null 2>&1; then
+    echo "could not start Fan actuation helper; previous installation was restored" >&2
+    exit 1
+  fi
 fi
 
 committed=true

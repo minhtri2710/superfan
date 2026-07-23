@@ -70,7 +70,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setUpdateStatusMsg(`New version v${res.latestRelease.version} is available!`);
         onShowUpdateModal(res.latestRelease);
       } else {
-        setUpdateStatusMsg("SuperFan is up to date! (v1.0.2)");
+        setUpdateStatusMsg("SuperFan is up to date! (v1.0.3)");
       }
     } catch (err: any) {
       setUpdateStatusMsg(`Error: ${err?.message || err}`);
@@ -169,7 +169,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <Sparkles className="w-4 h-4 text-amber-400" />
             <div>
               <div className="text-xs font-semibold text-white">Software Update</div>
-              <div className="text-[10px] text-slate-400">Version 1.0.2</div>
+              <div className="text-[10px] text-slate-400">Version 1.0.3</div>
             </div>
           </div>
 
@@ -233,9 +233,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {installMsg && (
-          <div className="mt-1 p-2 rounded-lg bg-slate-900/60 border border-white/10 text-[10px] font-mono text-slate-300 flex items-start gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
-            <span>{installMsg}</span>
+          <div
+            className={`mt-1 p-2 rounded-lg border text-[10px] font-mono flex items-start gap-1.5 ${
+              installMsg.toLowerCase().startsWith("error")
+                ? "bg-rose-950/40 border-rose-500/30 text-rose-200"
+                : "bg-slate-900/60 border-white/10 text-slate-300"
+            }`}
+          >
+            {installMsg.toLowerCase().startsWith("error") ? (
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+            ) : (
+              <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+            )}
+            <span className="break-all">{installMsg}</span>
           </div>
         )}
       </div>
