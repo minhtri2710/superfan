@@ -73,11 +73,14 @@ fi
 /usr/bin/plutil -lint "$staging_dir/service.plist" >/dev/null
 
 mutation_started=true
-/bin/launchctl bootout "system/$label" 2>/dev/null || true
-/bin/launchctl disable "system/$label" 2>/dev/null || true
 
-# Wait up to 2 seconds for launchd to finish tearing down any previous instance
-for i in 1 2 3 4 5 6 7 8 9 10; do
+# Ensure service is enabled and stop any running instance
+/bin/launchctl enable "system/$label" 2>/dev/null || true
+/bin/launchctl bootout "system/$label" 2>/dev/null || true
+/bin/launchctl bootout system "$destination_plist" 2>/dev/null || true
+
+# Wait up to 1 second for launchd to finish tearing down
+for i in 1 2 3 4 5; do
   if ! /bin/launchctl print "system/$label" >/dev/null 2>&1; then
     break
   fi
@@ -100,25 +103,16 @@ fi
 
 /bin/launchctl enable "system/$label" 2>/dev/null || true
 
-if ! /bin/launchctl bootstrap system "$destination_plist"; then
-  # If launchd considers the service registered, attempt kickstart or retry
-  if /bin/launchctl print "system/$label" >/dev/null 2>&1; then
-    /bin/launchctl kickstart -k "system/$label" 2>/dev/null || true
-  else
-    sleep 1
-    if ! /bin/launchctl bootstrap system "$destination_plist"; then
-      echo "could not bootstrap Fan actuation helper; previous installation was restored" >&2
-      exit 1
-    fi
-  fi
-fi
-
-if ! /bin/launchctl kickstart -k "system/$label"; then
-  if ! /bin/launchctl print "system/$label" >/dev/null 2>&1; then
-    echo "could not start Fan actuation helper; previous installation was restored" >&2
+# Bootstrap the service; if launchd still considers it registered, kickstart it
+if ! /bin/launchctl bootstrap system "$destination_plist" 2>/dev/null; then
+  if ! /bin/launchctl kickstart -k "system/$label" 2>/dev/null; then
+    echo "could not bootstrap or start Fan actuation helper; previous installation was restored" >&2
     exit 1
   fi
 fi
+
+# Ensure service process is active
+/bin/launchctl kickstart -k "system/$label" 2>/dev/null || true
 
 committed=true
 echo "Fan actuation helper installed"
