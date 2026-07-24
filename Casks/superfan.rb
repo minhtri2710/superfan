@@ -1,6 +1,6 @@
 cask "superfan" do
   version "1.2.3"
-  sha256 "21db7de9245a4f88e517655847ac33f4a03764d62f2f2ccb849117c24961f85c"
+  sha256 "b38a435fbbbbf55b1b248a61af6de7fedc8cb1e321ed62dfda4961ccd2ada730"
 
   url "https://github.com/minhtri2710/superfan/releases/download/v#{version}/SuperFan_#{version}_universal.dmg"
   name "SuperFan"
