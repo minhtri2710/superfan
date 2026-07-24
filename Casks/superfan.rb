@@ -1,6 +1,6 @@
 cask "superfan" do
   version "1.2.1"
-  sha256 :no_check # Hoặc mã SHA256 của file SuperFan-macOS-Universal.dmg sau khi release
+  sha256 "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5"
 
   url "https://github.com/minhtri2710/superfan/releases/download/v#{version}/SuperFan-macOS-Universal.dmg"
   name "SuperFan"
