@@ -1,5 +1,6 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 
 export interface ReleaseInfo {
   version: string;
@@ -19,7 +20,17 @@ export interface UpdateCheckResult {
 
 const REPO_OWNER = "minhtri2710";
 const REPO_NAME = "superfan";
-export const CURRENT_VERSION = "1.2.0";
+export const CURRENT_VERSION = "1.2.2";
+
+export async function getAppVersion(): Promise<string> {
+  try {
+    const v = await getVersion();
+    if (v) return cleanVersion(v);
+  } catch {
+    // fallback
+  }
+  return CURRENT_VERSION;
+}
 
 export function cleanVersion(v: string): string {
   return v.replace(/^v/i, "").trim();
@@ -40,6 +51,7 @@ export function compareVersions(v1: string, v2: string): number {
 }
 
 export async function checkForUpdates(): Promise<UpdateCheckResult> {
+  const currentVersion = await getAppVersion();
   // Strategy 1: GitHub REST API
   try {
     const response = await fetch(
@@ -81,11 +93,11 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
         downloadUrl,
       };
 
-      const hasUpdate = compareVersions(CURRENT_VERSION, latestVer) > 0;
+      const hasUpdate = compareVersions(currentVersion, latestVer) > 0;
 
       return {
         hasUpdate,
-        currentVersion: CURRENT_VERSION,
+        currentVersion,
         latestRelease: releaseInfo,
       };
     }
@@ -101,12 +113,12 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
 
     if (rawResponse.ok) {
       const pkg = await rawResponse.json();
-      const latestVer = cleanVersion(pkg.version || CURRENT_VERSION);
-      const hasUpdate = compareVersions(CURRENT_VERSION, latestVer) > 0;
+      const latestVer = cleanVersion(pkg.version || currentVersion);
+      const hasUpdate = compareVersions(currentVersion, latestVer) > 0;
 
       return {
         hasUpdate,
-        currentVersion: CURRENT_VERSION,
+        currentVersion,
         latestRelease: hasUpdate
           ? {
               version: latestVer,
@@ -122,14 +134,14 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
   } catch (rawErr: any) {
     return {
       hasUpdate: false,
-      currentVersion: CURRENT_VERSION,
+      currentVersion,
       error: rawErr?.message || "Failed to check for updates.",
     };
   }
 
   return {
     hasUpdate: false,
-    currentVersion: CURRENT_VERSION,
+    currentVersion,
     error: "GitHub API rate limit reached (HTTP 403). Try again later.",
   };
 }
