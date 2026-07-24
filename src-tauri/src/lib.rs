@@ -18,7 +18,9 @@ use tauri::{
 use thermal_policy::adapters::{ProductionFanActuation, TauriSettingsStore};
 use thermal_policy::contract::{ThermalPolicyMode, ThermalPolicySettings, ThermalRule};
 use thermal_policy::runtime::ThermalPolicyRuntime;
-use thermal_policy::state::{ThermalPolicyChange, ThermalPolicyState};
+use thermal_policy::state::{
+    DirectFanActuationRequest, ThermalPolicyChange, ThermalPolicyState,
+};
 
 type PreferencesModule = ApplicationPreferencesModule<
     TauriPreferencesStore<tauri::Wry>,
@@ -126,24 +128,17 @@ fn delete_thermal_rule(
         .update(ThermalPolicyChange::DeleteRule(rule_id))
 }
 
-fn ensure_direct_actuation_allowed(
-    state: &tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
-) -> Result<(), String> {
-    if state.policy.lock().unwrap().current().mode == ThermalPolicyMode::SystemAuto {
-        Ok(())
-    } else {
-        Err("direct Fan actuation is disabled while Thermal policy is active".into())
-    }
-}
-
 #[tauri::command]
 fn set_fan_speed(
     state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
     fan_id: usize,
     rpm: i32,
 ) -> Result<(), String> {
-    ensure_direct_actuation_allowed(&state)?;
-    client::set_target(fan_id, rpm)
+    state
+        .policy
+        .lock()
+        .unwrap()
+        .direct_actuation(DirectFanActuationRequest::Target { fan_id, rpm })
 }
 
 #[tauri::command]
@@ -153,15 +148,15 @@ fn set_fan_mode(
     mode: String,
     rpm: Option<i32>,
 ) -> Result<(), String> {
-    ensure_direct_actuation_allowed(&state)?;
-    match mode.as_str() {
-        "auto" => client::system_auto(fan_id),
-        "manual" => client::set_target(
+    let request = match mode.as_str() {
+        "auto" => DirectFanActuationRequest::SystemAuto { fan_id },
+        "manual" => DirectFanActuationRequest::Target {
             fan_id,
-            rpm.ok_or_else(|| "manual mode requires a target RPM".to_string())?,
-        ),
-        _ => Err("fan mode must be auto or manual".into()),
-    }
+            rpm: rpm.ok_or_else(|| "manual mode requires a target RPM".to_string())?,
+        },
+        _ => return Err("fan mode must be auto or manual".into()),
+    };
+    state.policy.lock().unwrap().direct_actuation(request)
 }
 
 #[tauri::command]

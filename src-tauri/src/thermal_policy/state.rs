@@ -7,7 +7,15 @@ pub(crate) trait SettingsStore {
 }
 
 pub(crate) trait FanActuation {
+    fn set_target(&mut self, fan_id: usize, rpm: i32) -> Result<(), String>;
+    fn system_auto(&mut self, fan_id: usize) -> Result<(), String>;
     fn restore_all(&mut self) -> Result<(), String>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DirectFanActuationRequest {
+    Target { fan_id: usize, rpm: i32 },
+    SystemAuto { fan_id: usize },
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +48,23 @@ impl<S: SettingsStore, F: FanActuation> ThermalPolicyState<S, F> {
 
     pub(crate) fn current(&self) -> ThermalPolicySettings {
         self.current.clone()
+    }
+
+    pub(crate) fn direct_actuation(
+        &mut self,
+        request: DirectFanActuationRequest,
+    ) -> Result<(), String> {
+        if self.current.mode != ThermalPolicyMode::SystemAuto {
+            return Err("direct Fan actuation is disabled while Thermal policy is active".into());
+        }
+        match request {
+            DirectFanActuationRequest::Target { fan_id, rpm } => {
+                self.fan_actuation.set_target(fan_id, rpm)
+            }
+            DirectFanActuationRequest::SystemAuto { fan_id } => {
+                self.fan_actuation.system_auto(fan_id)
+            }
+        }
     }
 
     pub(crate) fn update(
@@ -114,11 +139,33 @@ mod tests {
     #[derive(Clone, Default)]
     struct RecordingFanActuation {
         restore_count: Rc<RefCell<usize>>,
+        direct_requests: Rc<RefCell<Vec<DirectFanActuationRequest>>>,
         events: Rc<RefCell<Vec<&'static str>>>,
+        fail_direct: bool,
         fail_restore: bool,
     }
 
     impl FanActuation for RecordingFanActuation {
+        fn set_target(&mut self, fan_id: usize, rpm: i32) -> Result<(), String> {
+            self.direct_requests
+                .borrow_mut()
+                .push(DirectFanActuationRequest::Target { fan_id, rpm });
+            if self.fail_direct {
+                return Err("direct actuation failed".into());
+            }
+            Ok(())
+        }
+
+        fn system_auto(&mut self, fan_id: usize) -> Result<(), String> {
+            self.direct_requests
+                .borrow_mut()
+                .push(DirectFanActuationRequest::SystemAuto { fan_id });
+            if self.fail_direct {
+                return Err("direct actuation failed".into());
+            }
+            Ok(())
+        }
+
         fn restore_all(&mut self) -> Result<(), String> {
             self.events.borrow_mut().push("restore_all");
             *self.restore_count.borrow_mut() += 1;
@@ -187,6 +234,88 @@ mod tests {
 
         let state = ThermalPolicyState::load(store, RecordingFanActuation::default());
         assert_eq!(state.current(), ThermalPolicySettings::default());
+    }
+
+    #[test]
+    fn direct_target_and_system_auto_succeed_in_system_auto_mode() {
+        let settings = ThermalPolicySettings::default();
+        let (mut state, store, fan_actuation) = loaded(settings.clone());
+
+        state
+            .direct_actuation(DirectFanActuationRequest::Target {
+                fan_id: 1,
+                rpm: 3200,
+            })
+            .unwrap();
+        state
+            .direct_actuation(DirectFanActuationRequest::SystemAuto { fan_id: 1 })
+            .unwrap();
+
+        assert_eq!(state.current(), settings);
+        assert!(store.events.borrow().is_empty());
+        assert_eq!(
+            *fan_actuation.direct_requests.borrow(),
+            vec![
+                DirectFanActuationRequest::Target {
+                    fan_id: 1,
+                    rpm: 3200,
+                },
+                DirectFanActuationRequest::SystemAuto { fan_id: 1 },
+            ]
+        );
+    }
+
+    #[test]
+    fn active_policy_modes_reject_direct_requests_without_actuation() {
+        for mode in [
+            ThermalPolicyMode::Quiet,
+            ThermalPolicyMode::Performance,
+            ThermalPolicyMode::Custom,
+        ] {
+            let (mut state, _, fan_actuation) = loaded(ThermalPolicySettings {
+                mode,
+                rules: vec![],
+            });
+
+            assert!(state
+                .direct_actuation(DirectFanActuationRequest::Target {
+                    fan_id: 0,
+                    rpm: 3000,
+                })
+                .is_err());
+            assert!(state
+                .direct_actuation(DirectFanActuationRequest::SystemAuto { fan_id: 0 })
+                .is_err());
+            assert!(fan_actuation.direct_requests.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    fn direct_actuation_failures_are_returned_without_mutating_settings() {
+        for request in [
+            DirectFanActuationRequest::Target {
+                fan_id: 0,
+                rpm: 3000,
+            },
+            DirectFanActuationRequest::SystemAuto { fan_id: 0 },
+        ] {
+            let settings = ThermalPolicySettings::default();
+            let store = MemoryStore::default();
+            let shared_store = store.clone();
+            let fan_actuation = RecordingFanActuation {
+                fail_direct: true,
+                ..Default::default()
+            };
+            let mut state = ThermalPolicyState::load(store, fan_actuation);
+
+            assert_eq!(
+                state.direct_actuation(request).unwrap_err(),
+                "direct actuation failed"
+            );
+            assert_eq!(state.current(), settings);
+            assert!(shared_store.events.borrow().is_empty());
+            assert!(shared_store.value.borrow().is_none());
+        }
     }
 
     #[test]
