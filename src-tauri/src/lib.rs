@@ -365,7 +365,7 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
         let _ = std::fs::remove_dir_all(mount_point);
 
         let curl_status = std::process::Command::new("/usr/bin/curl")
-            .args(["-fL", "-o", temp_dmg, &download_url])
+            .args(["-fL", "-A", "SuperFan-Updater", "-o", temp_dmg, &download_url])
             .status()
             .map_err(|e| format!("Failed to download update: {e}"))?;
 
@@ -382,7 +382,17 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
             return Err("Failed to mount DMG package.".into());
         }
 
-        let source_app = format!("{mount_point}/SuperFan.app");
+        let mut source_app = format!("{mount_point}/SuperFan.app");
+        if let Ok(entries) = std::fs::read_dir(mount_point) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("app") {
+                    source_app = path.to_string_lossy().to_string();
+                    break;
+                }
+            }
+        }
+
         let staged_app = format!("{app_path}.new");
 
         let copy_status = std::process::Command::new("/bin/cp")

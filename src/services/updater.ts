@@ -58,9 +58,13 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
 
       let downloadUrl: string | undefined = undefined;
       if (Array.isArray(data.assets)) {
-        const asset = data.assets.find((a: any) =>
-          a.name?.endsWith(".dmg") || a.name?.endsWith(".zip") || a.name?.endsWith(".tar.gz")
+        const dmgAsset = data.assets.find((a: any) =>
+          a.name?.toLowerCase().endsWith(".dmg")
         );
+        const fallbackAsset = data.assets.find((a: any) =>
+          a.name?.toLowerCase().endsWith(".zip") || a.name?.toLowerCase().endsWith(".tar.gz")
+        );
+        const asset = dmgAsset || fallbackAsset;
         if (asset) {
           downloadUrl = asset.browser_download_url;
         }

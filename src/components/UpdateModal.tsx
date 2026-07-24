@@ -16,8 +16,14 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
+  const isDmgUrl = (url?: string) => {
+    if (!url) return false;
+    const cleanUrl = url.split("?")[0].toLowerCase();
+    return cleanUrl.endsWith(".dmg");
+  };
+
   const handleInstallAction = async () => {
-    if (release.downloadUrl && release.downloadUrl.endsWith(".dmg")) {
+    if (release.downloadUrl && isDmgUrl(release.downloadUrl)) {
       setUpdating(true);
       setUpdateError(null);
       try {
@@ -125,14 +131,14 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
           >
             {updating ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : release.downloadUrl?.endsWith(".dmg") ? (
+            ) : isDmgUrl(release.downloadUrl) ? (
               <Download className="w-3.5 h-3.5" />
             ) : (
               <ExternalLink className="w-3.5 h-3.5" />
             )}
             {updating
               ? "Updating..."
-              : release.downloadUrl?.endsWith(".dmg")
+              : isDmgUrl(release.downloadUrl)
               ? `Install & Relaunch v${release.version}`
               : `Download v${release.version}`}
           </button>
