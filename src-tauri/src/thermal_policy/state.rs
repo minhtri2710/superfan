@@ -181,9 +181,9 @@ impl<S: SettingsStore, F: FanActuation> ThermalPolicyState<S, F> {
         settings::validate(&updated)?;
         self.store.save(&updated)?;
         self.current = updated.clone();
+        self.evaluator = ThermalPolicyEvaluator::default();
 
         if restore_system_auto {
-            self.evaluator = ThermalPolicyEvaluator::default();
             self.force_restore_system_auto()?;
         }
 
@@ -538,6 +538,163 @@ mod tests {
                     .filter(|event| **event == "heartbeat")
                     .count(),
                 if fail_heartbeat { 2 } else { 1 }
+            );
+        }
+    }
+
+    #[test]
+    fn edited_custom_rule_updates_the_next_fan_plan() {
+        let initial_rule = ThermalRule {
+            min_fan_percent: 20,
+            ..rule("cpu")
+        };
+        let settings = ThermalPolicySettings {
+            mode: ThermalPolicyMode::Custom,
+            rules: vec![initial_rule.clone()],
+        };
+        let (mut state, store, fan_actuation) = loaded(settings);
+
+        assert_eq!(
+            state
+                .process_snapshot(&snapshot(Some(40.0), 1_000), 1_000)
+                .unwrap(),
+            FanPlan::Targets {
+                targets: vec![super::super::contract::FanTarget {
+                    fan_id: 0,
+                    rpm: 1800,
+                }]
+            }
+        );
+
+        state
+            .update(ThermalPolicyChange::UpsertRule(ThermalRule {
+                min_fan_percent: 10,
+                ..initial_rule
+            }))
+            .unwrap();
+
+        assert_eq!(state.current().rules[0].min_fan_percent, 10);
+        assert_eq!(
+            store.value.borrow().as_ref().unwrap().rules[0].min_fan_percent,
+            10
+        );
+        assert_eq!(
+            state
+                .process_snapshot(&snapshot(Some(40.0), 2_000), 2_000)
+                .unwrap(),
+            FanPlan::Targets {
+                targets: vec![super::super::contract::FanTarget {
+                    fan_id: 0,
+                    rpm: 1400,
+                }]
+            }
+        );
+        assert_eq!(
+            *fan_actuation.direct_requests.borrow(),
+            vec![
+                DirectFanActuationRequest::Target {
+                    fan_id: 0,
+                    rpm: 1800,
+                },
+                DirectFanActuationRequest::Target {
+                    fan_id: 0,
+                    rpm: 1400,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn raising_custom_rule_updates_the_next_fan_plan() {
+        let initial_rule = ThermalRule {
+            min_fan_percent: 10,
+            ..rule("cpu")
+        };
+        let settings = ThermalPolicySettings {
+            mode: ThermalPolicyMode::Custom,
+            rules: vec![initial_rule.clone()],
+        };
+        let (mut state, _, _) = loaded(settings);
+
+        assert_eq!(
+            state
+                .process_snapshot(&snapshot(Some(40.0), 1_000), 1_000)
+                .unwrap(),
+            FanPlan::Targets {
+                targets: vec![super::super::contract::FanTarget {
+                    fan_id: 0,
+                    rpm: 1400,
+                }]
+            }
+        );
+        state
+            .update(ThermalPolicyChange::UpsertRule(ThermalRule {
+                min_fan_percent: 20,
+                ..initial_rule
+            }))
+            .unwrap();
+        assert_eq!(
+            state
+                .process_snapshot(&snapshot(Some(40.0), 2_000), 2_000)
+                .unwrap(),
+            FanPlan::Targets {
+                targets: vec![super::super::contract::FanTarget {
+                    fan_id: 0,
+                    rpm: 1800,
+                }]
+            }
+        );
+    }
+
+    #[test]
+    fn failed_updates_preserve_evaluator_history() {
+        for persistence_failure in [false, true] {
+            let settings = ThermalPolicySettings {
+                mode: ThermalPolicyMode::Performance,
+                rules: vec![],
+            };
+            let store = MemoryStore {
+                fail_save: persistence_failure,
+                ..Default::default()
+            };
+            *store.value.borrow_mut() = Some(settings.clone());
+            let fan_actuation = RecordingFanActuation {
+                events: store.events.clone(),
+                ..Default::default()
+            };
+            let mut state = ThermalPolicyState::load(store, fan_actuation);
+            assert_eq!(
+                state
+                    .process_snapshot(&snapshot(Some(75.0), 1_000), 1_000)
+                    .unwrap(),
+                FanPlan::Targets {
+                    targets: vec![super::super::contract::FanTarget {
+                        fan_id: 0,
+                        rpm: 5000,
+                    }]
+                }
+            );
+
+            let result = if persistence_failure {
+                state.update(ThermalPolicyChange::SelectMode(ThermalPolicyMode::Quiet))
+            } else {
+                let mut invalid = rule("cpu");
+                invalid.low_celsius = 90.0;
+                invalid.high_celsius = 80.0;
+                state.update(ThermalPolicyChange::UpsertRule(invalid))
+            };
+            assert!(result.is_err());
+            assert_eq!(state.current(), settings);
+            assert_eq!(
+                state
+                    .process_snapshot(&snapshot(Some(40.0), 2_000), 2_000)
+                    .unwrap(),
+                FanPlan::Targets {
+                    targets: vec![super::super::contract::FanTarget {
+                        fan_id: 0,
+                        rpm: 4600,
+                    }]
+                }
             );
         }
     }
