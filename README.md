@@ -6,6 +6,18 @@ Built with **Tauri v2, Rust, React, TypeScript, and Tailwind CSS**.
 
 ---
 
+## 📥 Installation
+
+### Via Homebrew (macOS)
+```bash
+brew install minhtri2710/tap/superfan
+```
+
+### Manual Download
+Download the latest `.dmg` installer from [GitHub Releases](https://github.com/minhtri2710/superfan/releases).
+
+---
+
 ## ⚡ Key Features
 
 - 🌡️ **Real-Time Hardware Telemetry**: Accurate CPU (Apple Silicon P/E Cores & Intel), GPU, and Battery metrics.
