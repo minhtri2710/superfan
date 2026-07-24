@@ -1,5 +1,8 @@
-use super::contract::{ThermalPolicyMode, ThermalPolicySettings, ThermalRule};
+use super::contract::{FanPlan, ThermalPolicyMode, ThermalPolicySettings, ThermalRule};
+use super::evaluator::ThermalPolicyEvaluator;
 use super::settings;
+use crate::hardware_telemetry::contract::{FanActuationStatus, HardwareTelemetrySnapshot};
+use std::collections::BTreeMap;
 
 pub(crate) trait SettingsStore {
     fn load(&self) -> Result<Option<ThermalPolicySettings>, String>;
@@ -10,6 +13,7 @@ pub(crate) trait FanActuation {
     fn set_target(&mut self, fan_id: usize, rpm: i32) -> Result<(), String>;
     fn system_auto(&mut self, fan_id: usize) -> Result<(), String>;
     fn restore_all(&mut self) -> Result<(), String>;
+    fn heartbeat(&mut self) -> Result<(), String>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +33,10 @@ pub(crate) struct ThermalPolicyState<S, F> {
     store: S,
     fan_actuation: F,
     current: ThermalPolicySettings,
+    evaluator: ThermalPolicyEvaluator,
+    applied_targets: BTreeMap<usize, i32>,
+    manual_plan_active: bool,
+    system_auto_confirmed: bool,
 }
 
 impl<S: SettingsStore, F: FanActuation> ThermalPolicyState<S, F> {
@@ -43,6 +51,10 @@ impl<S: SettingsStore, F: FanActuation> ThermalPolicyState<S, F> {
             store,
             fan_actuation,
             current,
+            evaluator: ThermalPolicyEvaluator::default(),
+            applied_targets: BTreeMap::new(),
+            manual_plan_active: false,
+            system_auto_confirmed: false,
         }
     }
 
@@ -65,6 +77,77 @@ impl<S: SettingsStore, F: FanActuation> ThermalPolicyState<S, F> {
                 self.fan_actuation.system_auto(fan_id)
             }
         }
+    }
+
+    pub(crate) fn process_snapshot(
+        &mut self,
+        snapshot: &HardwareTelemetrySnapshot,
+        now_unix_ms: u64,
+    ) -> Result<FanPlan, String> {
+        let plan = self
+            .evaluator
+            .evaluate(&self.current, snapshot, now_unix_ms);
+        self.apply_plan(&plan)?;
+        if self.current.mode == ThermalPolicyMode::SystemAuto
+            && snapshot.fan_actuation_status == FanActuationStatus::Ready
+        {
+            if let Err(error) = self.fan_actuation.heartbeat() {
+                self.recover_from_actuation_failure();
+                return Err(error);
+            }
+        }
+        Ok(plan)
+    }
+
+    fn apply_plan(&mut self, plan: &FanPlan) -> Result<(), String> {
+        match plan {
+            FanPlan::SystemAuto => self.restore_system_auto(),
+            FanPlan::Targets { targets } => {
+                for target in targets
+                    .iter()
+                    .filter(|target| self.applied_targets.get(&target.fan_id) != Some(&target.rpm))
+                {
+                    if let Err(error) = self.fan_actuation.set_target(target.fan_id, target.rpm) {
+                        self.recover_from_actuation_failure();
+                        return Err(error);
+                    }
+                }
+
+                self.applied_targets = targets
+                    .iter()
+                    .map(|target| (target.fan_id, target.rpm))
+                    .collect();
+                self.manual_plan_active = true;
+                self.system_auto_confirmed = false;
+                if let Err(error) = self.fan_actuation.heartbeat() {
+                    self.recover_from_actuation_failure();
+                    return Err(error);
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn restore_system_auto(&mut self) -> Result<(), String> {
+        if self.manual_plan_active || !self.system_auto_confirmed {
+            return self.force_restore_system_auto();
+        }
+        Ok(())
+    }
+
+    fn force_restore_system_auto(&mut self) -> Result<(), String> {
+        self.fan_actuation.restore_all()?;
+        self.applied_targets.clear();
+        self.manual_plan_active = false;
+        self.system_auto_confirmed = true;
+        Ok(())
+    }
+
+    fn recover_from_actuation_failure(&mut self) {
+        let _ = self.fan_actuation.restore_all();
+        self.applied_targets.clear();
+        self.manual_plan_active = false;
+        self.system_auto_confirmed = false;
     }
 
     pub(crate) fn update(
@@ -100,7 +183,8 @@ impl<S: SettingsStore, F: FanActuation> ThermalPolicyState<S, F> {
         self.current = updated.clone();
 
         if restore_system_auto {
-            self.fan_actuation.restore_all()?;
+            self.evaluator = ThermalPolicyEvaluator::default();
+            self.force_restore_system_auto()?;
         }
 
         Ok(updated)
@@ -110,6 +194,9 @@ impl<S: SettingsStore, F: FanActuation> ThermalPolicyState<S, F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hardware_telemetry::contract::{
+        Availability, FanMode, FanReading, TemperatureReadings,
+    };
     use crate::thermal_policy::contract::ThermalTarget;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -142,6 +229,8 @@ mod tests {
         direct_requests: Rc<RefCell<Vec<DirectFanActuationRequest>>>,
         events: Rc<RefCell<Vec<&'static str>>>,
         fail_direct: bool,
+        fail_target_once: Rc<RefCell<bool>>,
+        fail_heartbeat_once: Rc<RefCell<bool>>,
         fail_restore: bool,
     }
 
@@ -152,6 +241,10 @@ mod tests {
                 .push(DirectFanActuationRequest::Target { fan_id, rpm });
             if self.fail_direct {
                 return Err("direct actuation failed".into());
+            }
+            if *self.fail_target_once.borrow() {
+                *self.fail_target_once.borrow_mut() = false;
+                return Err("target failed".into());
             }
             Ok(())
         }
@@ -173,6 +266,41 @@ mod tests {
                 return Err("restore failed".into());
             }
             Ok(())
+        }
+
+        fn heartbeat(&mut self) -> Result<(), String> {
+            self.events.borrow_mut().push("heartbeat");
+            if *self.fail_heartbeat_once.borrow() {
+                *self.fail_heartbeat_once.borrow_mut() = false;
+                return Err("heartbeat failed".into());
+            }
+            Ok(())
+        }
+    }
+
+    fn snapshot(cpu_celsius: Option<f64>, captured_at_unix_ms: u64) -> HardwareTelemetrySnapshot {
+        HardwareTelemetrySnapshot {
+            temperatures: Availability::Available {
+                value: TemperatureReadings {
+                    cpu_celsius,
+                    gpu_celsius: None,
+                    sensors: vec![],
+                },
+            },
+            fans: Availability::Available {
+                value: vec![FanReading {
+                    id: 0,
+                    label: "Fan 1".into(),
+                    speed_rpm: 2000,
+                    min_speed_rpm: Some(1000),
+                    max_speed_rpm: Some(5000),
+                    target_speed_rpm: None,
+                    mode: Some(FanMode::SystemAuto),
+                }],
+            },
+            battery: Availability::NotPresent,
+            fan_actuation_status: FanActuationStatus::Ready,
+            captured_at_unix_ms,
         }
     }
 
@@ -234,6 +362,184 @@ mod tests {
 
         let state = ThermalPolicyState::load(store, RecordingFanActuation::default());
         assert_eq!(state.current(), ThermalPolicySettings::default());
+    }
+
+    #[test]
+    fn system_auto_snapshot_heartbeats_direct_target_without_redundant_restore() {
+        let (mut state, _, fan_actuation) = loaded(ThermalPolicySettings::default());
+        state
+            .process_snapshot(&snapshot(Some(70.0), 1_000), 1_000)
+            .unwrap();
+        state
+            .direct_actuation(DirectFanActuationRequest::Target {
+                fan_id: 0,
+                rpm: 3000,
+            })
+            .unwrap();
+        state
+            .process_snapshot(&snapshot(Some(70.0), 2_000), 2_000)
+            .unwrap();
+
+        assert_eq!(*fan_actuation.restore_count.borrow(), 1);
+        assert_eq!(
+            fan_actuation
+                .events
+                .borrow()
+                .iter()
+                .filter(|event| **event == "heartbeat")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn system_auto_heartbeat_failure_restores_and_returns_error() {
+        let store = MemoryStore::default();
+        let fan_actuation = RecordingFanActuation {
+            events: store.events.clone(),
+            fail_heartbeat_once: Rc::new(RefCell::new(true)),
+            ..Default::default()
+        };
+        let shared = fan_actuation.clone();
+        let mut state = ThermalPolicyState::load(store, fan_actuation);
+
+        assert_eq!(
+            state
+                .process_snapshot(&snapshot(Some(70.0), 1_000), 1_000)
+                .unwrap_err(),
+            "heartbeat failed"
+        );
+        assert_eq!(*shared.restore_count.borrow(), 2);
+    }
+
+    #[test]
+    fn snapshot_processing_applies_changed_targets_and_heartbeats_without_persisting() {
+        let settings = ThermalPolicySettings {
+            mode: ThermalPolicyMode::Performance,
+            rules: vec![],
+        };
+        let (mut state, store, fan_actuation) = loaded(settings.clone());
+
+        let first = state
+            .process_snapshot(&snapshot(Some(70.0), 1_000), 1_000)
+            .unwrap();
+        let second = state
+            .process_snapshot(&snapshot(Some(70.0), 2_000), 2_000)
+            .unwrap();
+
+        assert_eq!(
+            first,
+            FanPlan::Targets {
+                targets: vec![super::super::contract::FanTarget {
+                    fan_id: 0,
+                    rpm: 4657
+                }]
+            }
+        );
+        assert_eq!(second, first);
+        assert_eq!(
+            *fan_actuation.direct_requests.borrow(),
+            vec![DirectFanActuationRequest::Target {
+                fan_id: 0,
+                rpm: 4657
+            }]
+        );
+        assert_eq!(*store.events.borrow(), vec!["heartbeat", "heartbeat"]);
+        assert_eq!(state.current(), settings);
+    }
+
+    #[test]
+    fn fail_safe_snapshots_restore_system_auto_without_redundant_writes() {
+        let settings = ThermalPolicySettings {
+            mode: ThermalPolicyMode::Performance,
+            rules: vec![],
+        };
+        let (mut state, _, fan_actuation) = loaded(settings);
+        state
+            .process_snapshot(&snapshot(Some(70.0), 1_000), 1_000)
+            .unwrap();
+
+        let stale = state
+            .process_snapshot(&snapshot(Some(70.0), 1_000), 6_001)
+            .unwrap();
+        let mut unavailable = snapshot(Some(70.0), 7_000);
+        unavailable.temperatures = Availability::Unavailable {
+            reason: "unavailable".into(),
+        };
+        let unavailable_plan = state.process_snapshot(&unavailable, 7_000).unwrap();
+        let mut missing = snapshot(Some(70.0), 8_000);
+        missing.fans = Availability::NotPresent;
+        let missing_plan = state.process_snapshot(&missing, 8_000).unwrap();
+
+        assert_eq!(stale, FanPlan::SystemAuto);
+        assert_eq!(unavailable_plan, FanPlan::SystemAuto);
+        assert_eq!(missing_plan, FanPlan::SystemAuto);
+        assert_eq!(*fan_actuation.restore_count.borrow(), 1);
+        assert_eq!(
+            fan_actuation
+                .events
+                .borrow()
+                .iter()
+                .filter(|event| **event == "heartbeat")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn target_and_heartbeat_failures_restore_and_recover_on_later_snapshots() {
+        for fail_heartbeat in [false, true] {
+            let settings = ThermalPolicySettings {
+                mode: ThermalPolicyMode::Performance,
+                rules: vec![],
+            };
+            let store = MemoryStore::default();
+            *store.value.borrow_mut() = Some(settings);
+            let fan_actuation = RecordingFanActuation {
+                events: store.events.clone(),
+                fail_target_once: Rc::new(RefCell::new(!fail_heartbeat)),
+                fail_heartbeat_once: Rc::new(RefCell::new(fail_heartbeat)),
+                ..Default::default()
+            };
+            let shared = fan_actuation.clone();
+            let mut state = ThermalPolicyState::load(store, fan_actuation);
+
+            let error = state
+                .process_snapshot(&snapshot(Some(70.0), 1_000), 1_000)
+                .unwrap_err();
+            assert_eq!(
+                error,
+                if fail_heartbeat {
+                    "heartbeat failed"
+                } else {
+                    "target failed"
+                }
+            );
+            assert_eq!(*shared.restore_count.borrow(), 1);
+
+            let recovered = state
+                .process_snapshot(&snapshot(Some(70.0), 2_000), 2_000)
+                .unwrap();
+            assert!(matches!(recovered, FanPlan::Targets { .. }));
+            assert_eq!(
+                shared
+                    .direct_requests
+                    .borrow()
+                    .iter()
+                    .filter(|request| matches!(request, DirectFanActuationRequest::Target { .. }))
+                    .count(),
+                2
+            );
+            assert_eq!(
+                shared
+                    .events
+                    .borrow()
+                    .iter()
+                    .filter(|event| **event == "heartbeat")
+                    .count(),
+                if fail_heartbeat { 2 } else { 1 }
+            );
+        }
     }
 
     #[test]
@@ -382,6 +688,64 @@ mod tests {
             .is_err());
         assert_eq!(state.current(), ThermalPolicySettings::default());
         assert_eq!(*shared_fan_actuation.restore_count.borrow(), 0);
+    }
+
+    #[test]
+    fn system_auto_mode_cycle_clears_evaluator_history() {
+        let settings = ThermalPolicySettings {
+            mode: ThermalPolicyMode::Performance,
+            rules: vec![],
+        };
+        let (mut state, _, _) = loaded(settings);
+        state
+            .process_snapshot(&snapshot(Some(75.0), 1_000), 1_000)
+            .unwrap();
+        state
+            .update(ThermalPolicyChange::SelectMode(
+                ThermalPolicyMode::SystemAuto,
+            ))
+            .unwrap();
+        state
+            .update(ThermalPolicyChange::SelectMode(
+                ThermalPolicyMode::Performance,
+            ))
+            .unwrap();
+
+        let plan = state
+            .process_snapshot(&snapshot(Some(40.0), 2_000), 2_000)
+            .unwrap();
+        assert_eq!(
+            plan,
+            FanPlan::Targets {
+                targets: vec![super::super::contract::FanTarget {
+                    fan_id: 0,
+                    rpm: 2600,
+                }]
+            }
+        );
+    }
+
+    #[test]
+    fn explicit_system_auto_selection_clears_runtime_state() {
+        let settings = ThermalPolicySettings {
+            mode: ThermalPolicyMode::Performance,
+            rules: vec![],
+        };
+        let (mut state, _, fan_actuation) = loaded(settings);
+        state
+            .process_snapshot(&snapshot(Some(70.0), 1_000), 1_000)
+            .unwrap();
+
+        state
+            .update(ThermalPolicyChange::SelectMode(
+                ThermalPolicyMode::SystemAuto,
+            ))
+            .unwrap();
+        state
+            .process_snapshot(&snapshot(Some(70.0), 2_000), 2_000)
+            .unwrap();
+
+        assert_eq!(*fan_actuation.restore_count.borrow(), 1);
     }
 
     #[test]

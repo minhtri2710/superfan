@@ -58,4 +58,8 @@ impl FanActuation for ProductionFanActuation {
     fn restore_all(&mut self) -> Result<(), String> {
         client::restore_all()
     }
+
+    fn heartbeat(&mut self) -> Result<(), String> {
+        client::heartbeat()
+    }
 }

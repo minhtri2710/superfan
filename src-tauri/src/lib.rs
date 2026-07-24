@@ -17,7 +17,6 @@ use tauri::{
 };
 use thermal_policy::adapters::{ProductionFanActuation, TauriSettingsStore};
 use thermal_policy::contract::{ThermalPolicyMode, ThermalPolicySettings, ThermalRule};
-use thermal_policy::runtime::ThermalPolicyRuntime;
 use thermal_policy::state::{
     DirectFanActuationRequest, ThermalPolicyChange, ThermalPolicyState,
 };
@@ -280,24 +279,18 @@ pub fn run() {
                 .build(_app)?;
 
             tauri::async_runtime::spawn(async move {
-                let mut policy_runtime = ThermalPolicyRuntime::default();
                 loop {
                     application_preferences::cadence::wait_for_next_tick(
                         &mut telemetry_interval_updates,
                     )
                     .await;
                     let data = telemetry_snapshot();
-                    let settings = policy_state.policy.lock().unwrap().current();
                     let now_unix_ms = data.captured_at_unix_ms;
-                    let policy_result =
-                        policy_runtime.evaluate_and_apply(&settings, &data, now_unix_ms);
-                    if policy_result.is_err() {
-                        let _ = policy_runtime.restore_system_auto();
-                    } else if settings.mode == ThermalPolicyMode::SystemAuto
-                        && data.fan_actuation_status == FanActuationStatus::Ready
-                    {
-                        let _ = client::heartbeat();
-                    }
+                    let _ = policy_state
+                        .policy
+                        .lock()
+                        .unwrap()
+                        .process_snapshot(&data, now_unix_ms);
 
                     // Update tray title if CPU temp is available
                     if let Some(tray) = app_handle.tray_by_id("superfan-tray") {
