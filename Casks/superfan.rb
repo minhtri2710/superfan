@@ -1,8 +1,8 @@
 cask "superfan" do
   version "1.2.1"
-  sha256 "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5"
+  sha256 "baff77c98980c6bed136fe4290cb9ee51c6032f804299b7b09c102b0423054a3"
 
-  url "https://github.com/minhtri2710/superfan/releases/download/v#{version}/SuperFan-macOS-Universal.dmg"
+  url "https://github.com/minhtri2710/superfan/releases/download/v#{version}/SuperFan_#{version}_universal.dmg"
   name "SuperFan"
   desc "Control and monitor fan speed on macOS"
   homepage "https://github.com/minhtri2710/superfan"
