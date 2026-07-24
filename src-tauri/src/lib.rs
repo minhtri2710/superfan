@@ -17,9 +17,7 @@ use tauri::{
 };
 use thermal_policy::adapters::{ProductionFanActuation, TauriSettingsStore};
 use thermal_policy::contract::{ThermalPolicyMode, ThermalPolicySettings, ThermalRule};
-use thermal_policy::state::{
-    DirectFanActuationRequest, ThermalPolicyChange, ThermalPolicyState,
-};
+use thermal_policy::state::{DirectFanActuationRequest, ThermalPolicyChange, ThermalPolicyState};
 
 type PreferencesModule = ApplicationPreferencesModule<
     TauriPreferencesStore<tauri::Wry>,
@@ -32,10 +30,7 @@ struct ApplicationPreferencesState {
 }
 
 type PolicyModule = ThermalPolicyState<TauriSettingsStore<tauri::Wry>, ProductionFanActuation>;
-
-struct ThermalPolicyApplicationState {
-    policy: Mutex<PolicyModule>,
-}
+type PolicyState = Arc<Mutex<PolicyModule>>;
 
 #[tauri::command]
 fn fan_actuation_status() -> ActuationStatus {
@@ -85,19 +80,16 @@ fn update_application_preferences(
 }
 
 #[tauri::command]
-fn thermal_policy_settings(
-    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
-) -> ThermalPolicySettings {
-    state.policy.lock().unwrap().current()
+fn thermal_policy_settings(state: tauri::State<'_, PolicyState>) -> ThermalPolicySettings {
+    state.lock().unwrap().current()
 }
 
 #[tauri::command]
 fn select_thermal_policy_mode(
-    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
+    state: tauri::State<'_, PolicyState>,
     mode: ThermalPolicyMode,
 ) -> Result<ThermalPolicySettings, String> {
     state
-        .policy
         .lock()
         .unwrap()
         .update(ThermalPolicyChange::SelectMode(mode))
@@ -105,11 +97,10 @@ fn select_thermal_policy_mode(
 
 #[tauri::command]
 fn upsert_thermal_rule(
-    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
+    state: tauri::State<'_, PolicyState>,
     rule: ThermalRule,
 ) -> Result<ThermalPolicySettings, String> {
     state
-        .policy
         .lock()
         .unwrap()
         .update(ThermalPolicyChange::UpsertRule(rule))
@@ -117,11 +108,10 @@ fn upsert_thermal_rule(
 
 #[tauri::command]
 fn delete_thermal_rule(
-    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
+    state: tauri::State<'_, PolicyState>,
     rule_id: String,
 ) -> Result<ThermalPolicySettings, String> {
     state
-        .policy
         .lock()
         .unwrap()
         .update(ThermalPolicyChange::DeleteRule(rule_id))
@@ -129,12 +119,11 @@ fn delete_thermal_rule(
 
 #[tauri::command]
 fn set_fan_speed(
-    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
+    state: tauri::State<'_, PolicyState>,
     fan_id: usize,
     rpm: i32,
 ) -> Result<(), String> {
     state
-        .policy
         .lock()
         .unwrap()
         .direct_actuation(DirectFanActuationRequest::Target { fan_id, rpm })
@@ -142,7 +131,7 @@ fn set_fan_speed(
 
 #[tauri::command]
 fn set_fan_mode(
-    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
+    state: tauri::State<'_, PolicyState>,
     fan_id: usize,
     mode: String,
     rpm: Option<i32>,
@@ -155,7 +144,7 @@ fn set_fan_mode(
         },
         _ => return Err("fan mode must be auto or manual".into()),
     };
-    state.policy.lock().unwrap().direct_actuation(request)
+    state.lock().unwrap().direct_actuation(request)
 }
 
 #[tauri::command]
@@ -228,9 +217,7 @@ pub fn run() {
                 TauriSettingsStore::new(app_handle.clone()),
                 ProductionFanActuation,
             );
-            let policy_state = Arc::new(ThermalPolicyApplicationState {
-                policy: Mutex::new(policy),
-            });
+            let policy_state = Arc::new(Mutex::new(policy));
             _app.manage(policy_state.clone());
 
             // Setup Tray Icon (No icon set, title only for clean menu bar text)
@@ -287,7 +274,6 @@ pub fn run() {
                     let data = telemetry_snapshot();
                     let now_unix_ms = data.captured_at_unix_ms;
                     let _ = policy_state
-                        .policy
                         .lock()
                         .unwrap()
                         .process_snapshot(&data, now_unix_ms);

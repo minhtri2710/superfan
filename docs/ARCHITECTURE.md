@@ -19,7 +19,9 @@ Rust backend
   │    ├─ LSUIElement / ActivationPolicy::Accessory (Dockless menu bar app)
   │    └─ tauri-plugin-positioner (Position::TrayBottomCenter)
   ├─ Thermal policy module
-  │    └─ Hardware telemetry snapshot → Fan plan
+  │    ├─ authoritative settings and runtime state
+  │    ├─ pure Hardware telemetry snapshot → Fan plan evaluator
+  │    └─ internal settings-store and Fan-actuation adapters
   └─ Fan actuation module
        ├─ administrator-authorized installer adapter
        └─ Unix socket → privileged launchd daemon → Apple SMC
@@ -31,7 +33,7 @@ The Hardware telemetry snapshot module normalizes temperatures, fan measurements
 
 The Windowing & Activation Policy module configures SuperFan as a macOS Accessory application. In `Info.plist`, `LSUIElement` is set to `true`, and Rust setup calls `set_activation_policy(tauri::ActivationPolicy::Accessory)`. The app icon is hidden from the macOS Dock and Cmd+Tab app switcher. Tray clicks and `toggle_popover` invoke `window.move_window(Position::TrayBottomCenter)` from `tauri-plugin-positioner` to position the frameless window directly underneath the menu bar icon.
 
-The Thermal policy module owns presets and custom rules in Rust. It evaluates one Hardware telemetry snapshot at a time and produces a Fan plan. Policy settings persist through Tauri store. TypeScript interfaces are generated from the Rust contracts with `npm run generate:types`.
+The Thermal policy module is authoritative for current settings, atomic settings transitions, direct Fan actuation policy gating, and runtime processing of each Hardware telemetry snapshot. It owns evaluator history, changed-target suppression, heartbeat behavior, and fail-safe restoration while coordinating persistence and Fan actuation through internal adapters. The evaluator remains pure: it translates one Hardware telemetry snapshot and authoritative settings into one Fan plan without transport, persistence, or socket behavior. Hardware telemetry capture and cadence remain outside the module. TypeScript interfaces are generated from the Rust contracts with `npm run generate:types`.
 
 The Fan actuation module owns privileged writes. An administrator-authorized installer places the helper in `/Library/PrivilegedHelperTools` and its traditional plist in `/Library/LaunchDaemons`, with transactional rollback on launchd failure. The application communicates with the installed daemon through a narrow Unix socket protocol. The daemon authorizes the active console user, validates targets against hardware ranges, and restores all fans to System Auto when communication or its heartbeat lease fails.
 
@@ -54,10 +56,10 @@ The Fan actuation module owns privileged writes. An administrator-authorized ins
 | `application_preferences` | Return the authoritative Application preferences snapshot. |
 | `update_application_preferences` | Validate and apply one tagged preference change. |
 | `fetch_telemetry` | Return the current Hardware telemetry snapshot. |
-| `thermal_policy_settings` | Return persisted Thermal policy settings. |
-| `select_thermal_policy_mode` | Select System Auto, Quiet, Performance, or Custom. |
-| `upsert_thermal_rule` | Validate and persist a custom Thermal rule. |
-| `delete_thermal_rule` | Delete and persist a custom Thermal rule. |
+| `thermal_policy_settings` | Return the authoritative Thermal policy settings snapshot. |
+| `select_thermal_policy_mode` | Delegate a mode-selection change to the authoritative Thermal policy module. |
+| `upsert_thermal_rule` | Delegate a Thermal rule upsert to the authoritative module. |
+| `delete_thermal_rule` | Delegate a Thermal rule deletion to the authoritative module. |
 | `fan_actuation_status` | Report installed Fan actuation helper readiness. |
 | `set_fan_speed` | Apply a direct manual RPM target while Thermal policy is in System Auto. |
 | `set_fan_mode` | Select direct manual behavior or System Auto while automatic policy is inactive. |
