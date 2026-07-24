@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Sliders, Shield, Flame, Zap, Plus, Check, Trash2, Cpu, Thermometer } from "lucide-react";
+import { Sliders, Shield, Flame, Zap, Plus, Check, Trash2, Cpu, Thermometer, Pencil } from "lucide-react";
 import { TemperatureReading, ThermalPolicyMode, ThermalRule, ThermalTarget } from "../types";
 
 interface FanRuleManagerProps {
@@ -20,6 +20,7 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
   onDeleteRule,
 }) => {
   const [editing, setEditing] = useState(false);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [targetSensor, setTargetSensor] = useState<string>("hottest");
   const [lowTemp, setLowTemp] = useState<number>(45);
   const [highTemp, setHighTemp] = useState<number>(80);
@@ -27,13 +28,39 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
   const [maxFan, setMaxFan] = useState<number>(100);
   const [ruleName, setRuleName] = useState<string>("Custom Thermal Profile");
 
-  const handleCreateRule = () => {
+  const resetForm = () => {
+    setEditingRuleId(null);
+    setRuleName("Custom Thermal Profile");
+    setTargetSensor("hottest");
+    setLowTemp(45);
+    setHighTemp(80);
+    setMinFan(20);
+    setMaxFan(100);
+  };
+
+  const handleStartNewRule = () => {
+    resetForm();
+    setEditing(true);
+  };
+
+  const handleStartEditRule = (rule: ThermalRule) => {
+    setEditingRuleId(rule.id);
+    setRuleName(rule.name);
+    setTargetSensor(rule.target.type === "sensor_key" ? rule.target.key : rule.target.type);
+    setLowTemp(rule.low_celsius);
+    setHighTemp(rule.high_celsius);
+    setMinFan(rule.min_fan_percent);
+    setMaxFan(rule.max_fan_percent);
+    setEditing(true);
+  };
+
+  const handleSaveRuleSubmit = () => {
     const target: ThermalTarget =
       targetSensor === "hottest" || targetSensor === "cpu" || targetSensor === "gpu"
         ? { type: targetSensor }
         : { type: "sensor_key", key: targetSensor };
-    const newRule: ThermalRule = {
-      id: Date.now().toString(),
+    const ruleToSave: ThermalRule = {
+      id: editingRuleId || Date.now().toString(),
       name: ruleName,
       target,
       low_celsius: lowTemp,
@@ -42,9 +69,10 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
       max_fan_percent: maxFan,
       active: true,
     };
-    onSaveRule(newRule);
+    onSaveRule(ruleToSave);
     onSelectPreset("custom");
     setEditing(false);
+    resetForm();
   };
 
   return (
@@ -55,7 +83,7 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
           Smart Thermal Control
         </div>
         <button
-          onClick={() => setEditing(!editing)}
+          onClick={handleStartNewRule}
           className="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold flex items-center gap-1 hover:bg-cyan-500/30 transition-all shadow-sm"
         >
           <Plus className="w-3 h-3" />
@@ -63,12 +91,12 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
         </button>
       </div>
 
-      {/* Preset Grid */}
-      <div className="grid grid-cols-3 gap-2 text-[11px]">
+      {/* Preset Grid - 4 Columns */}
+      <div className="grid grid-cols-4 gap-1.5 text-[11px]">
         {/* macOS Auto */}
         <button
           onClick={() => onSelectPreset("system_auto")}
-          className={`p-2.5 rounded-xl border text-left transition-all ${
+          className={`p-2 rounded-xl border text-left transition-all ${
             activePreset === "system_auto"
               ? "bg-cyan-500/20 border-cyan-500/50 text-white shadow-md shadow-cyan-500/10"
               : "bg-slate-900/40 border-white/5 text-slate-400 hover:text-white"
@@ -78,14 +106,14 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
             <Shield className="w-3.5 h-3.5 text-emerald-400" />
             {activePreset === "system_auto" && <Check className="w-3 h-3 text-cyan-400" />}
           </div>
-          <div className="font-bold text-xs">System Auto</div>
-          <div className="text-[9px] text-slate-400 mt-0.5">Default Apple SMC</div>
+          <div className="font-bold text-[11px] truncate">System Auto</div>
+          <div className="text-[9px] text-slate-400 mt-0.5 truncate">Default SMC</div>
         </button>
 
         {/* Quiet Profile */}
         <button
           onClick={() => onSelectPreset("quiet")}
-          className={`p-2.5 rounded-xl border text-left transition-all ${
+          className={`p-2 rounded-xl border text-left transition-all ${
             activePreset === "quiet"
               ? "bg-cyan-500/20 border-cyan-500/50 text-white shadow-md shadow-cyan-500/10"
               : "bg-slate-900/40 border-white/5 text-slate-400 hover:text-white"
@@ -95,14 +123,14 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
             <Zap className="w-3.5 h-3.5 text-cyan-400" />
             {activePreset === "quiet" && <Check className="w-3 h-3 text-cyan-400" />}
           </div>
-          <div className="font-bold text-xs">Quiet</div>
-          <div className="text-[9px] text-slate-400 mt-0.5">Low noise 50-85°C</div>
+          <div className="font-bold text-[11px] truncate">Quiet</div>
+          <div className="text-[9px] text-slate-400 mt-0.5 truncate">50-85°C</div>
         </button>
 
         {/* Performance Profile */}
         <button
           onClick={() => onSelectPreset("performance")}
-          className={`p-2.5 rounded-xl border text-left transition-all ${
+          className={`p-2 rounded-xl border text-left transition-all ${
             activePreset === "performance"
               ? "bg-amber-500/20 border-amber-500/50 text-white shadow-md shadow-amber-500/10"
               : "bg-slate-900/40 border-white/5 text-slate-400 hover:text-white"
@@ -112,8 +140,25 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
             <Flame className="w-3.5 h-3.5 text-amber-400" />
             {activePreset === "performance" && <Check className="w-3 h-3 text-amber-400" />}
           </div>
-          <div className="font-bold text-xs">Performance</div>
-          <div className="text-[9px] text-slate-400 mt-0.5">Max cooling 40-75°C</div>
+          <div className="font-bold text-[11px] truncate">Performance</div>
+          <div className="text-[9px] text-slate-400 mt-0.5 truncate">40-75°C</div>
+        </button>
+
+        {/* Custom Profile */}
+        <button
+          onClick={() => onSelectPreset("custom")}
+          className={`p-2 rounded-xl border text-left transition-all ${
+            activePreset === "custom"
+              ? "bg-purple-500/20 border-purple-500/50 text-white shadow-md shadow-purple-500/10"
+              : "bg-slate-900/40 border-white/5 text-slate-400 hover:text-white"
+          }`}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <Sliders className="w-3.5 h-3.5 text-purple-400" />
+            {activePreset === "custom" && <Check className="w-3 h-3 text-purple-400" />}
+          </div>
+          <div className="font-bold text-[11px] truncate">Custom</div>
+          <div className="text-[9px] text-slate-400 mt-0.5 truncate">User Rules</div>
         </button>
       </div>
 
@@ -123,9 +168,11 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
           <div className="flex items-center justify-between border-b border-white/10 pb-2">
             <div className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
               <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-              Configure Thermal Rule
+              {editingRuleId ? "Edit Thermal Rule" : "Configure Thermal Rule"}
             </div>
-            <span className="text-[9px] font-mono text-slate-400">Custom Profile</span>
+            <span className="text-[9px] font-mono text-slate-400">
+              {editingRuleId ? "Editing Rule" : "New Profile"}
+            </span>
           </div>
 
           <div className="space-y-1">
@@ -230,16 +277,19 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
           {/* Actions */}
           <div className="flex gap-2 justify-end pt-1">
             <button
-              onClick={() => setEditing(false)}
+              onClick={() => {
+                setEditing(false);
+                resetForm();
+              }}
               className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white transition-colors"
             >
               Cancel
             </button>
             <button
-              onClick={handleCreateRule}
+              onClick={handleSaveRuleSubmit}
               className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-950 font-bold text-xs hover:from-cyan-400 hover:to-blue-400 shadow-md shadow-cyan-500/20 transition-all"
             >
-              Save Rule
+              {editingRuleId ? "Update Rule" : "Save Rule"}
             </button>
           </div>
         </div>
@@ -248,24 +298,60 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
       {/* Active Custom Rules List */}
       {customRules.length > 0 && (
         <div className="flex flex-col gap-1.5 mt-1">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Custom Profiles</div>
+          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            <span>Custom Profiles</span>
+            {activePreset === "custom" && (
+              <span className="text-purple-400 flex items-center gap-1 font-mono normal-case text-[9px] bg-purple-500/10 border border-purple-500/30 px-1.5 py-0.5 rounded">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+                ACTIVE POLICY
+              </span>
+            )}
+          </div>
           {customRules.map((r) => (
             <div
               key={r.id}
-              className="p-2.5 rounded-xl bg-slate-900/60 border border-white/5 flex items-center justify-between text-xs"
+              onClick={() => onSelectPreset("custom")}
+              className={`p-2.5 rounded-xl border flex items-center justify-between text-xs cursor-pointer transition-all ${
+                activePreset === "custom"
+                  ? "bg-purple-950/30 border-purple-500/40 hover:border-purple-500/60"
+                  : "bg-slate-900/60 border-white/5 hover:border-white/10"
+              }`}
             >
-              <div>
-                <div className="font-semibold text-white">{r.name}</div>
+              <div className="flex-1 pr-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-white">{r.name}</span>
+                  {activePreset === "custom" && (
+                    <span className="text-[8px] bg-purple-500/20 text-purple-300 font-mono px-1.5 py-0.5 rounded border border-purple-500/30">
+                      ENFORCED
+                    </span>
+                  )}
+                </div>
                 <div className="text-[9px] text-slate-400 font-mono mt-0.5">
                   Target: {r.target.type === "sensor_key" ? r.target.key : r.target.type} | {r.low_celsius}°C - {r.high_celsius}°C ({r.min_fan_percent}%-{r.max_fan_percent}%)
                 </div>
               </div>
-              <button
-                onClick={() => onDeleteRule(r.id)}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-white/5 transition-all"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  title="Edit Rule"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleStartEditRule(r);
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 transition-all"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  title="Delete Rule"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteRule(r.id);
+                  }}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-white/5 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -273,3 +359,4 @@ export const FanRuleManager: React.FC<FanRuleManagerProps> = ({
     </div>
   );
 };
+
