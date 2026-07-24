@@ -10,7 +10,7 @@ import { FanCard } from "./components/FanCard";
 import { BatteryCard } from "./components/BatteryCard";
 import { SettingsModal } from "./components/SettingsModal";
 import { UpdateModal } from "./components/UpdateModal";
-import { checkForUpdates, ReleaseInfo } from "./services/updater";
+import { checkForUpdates, ReleaseInfo, CURRENT_VERSION } from "./services/updater";
 import {
   ApplicationPreferenceChange,
   ApplicationPreferences,
@@ -317,13 +317,13 @@ export function App() {
             Update v{updateRelease.version}
           </button>
         ) : (
-          <span className="font-mono">SuperFan v1.1.0</span>
+          <span className="font-mono">SuperFan v{CURRENT_VERSION}</span>
         )}
       </div>
 
       {showUpdateModal && updateRelease && (
         <UpdateModal
-          currentVersion="1.1.0"
+          currentVersion={CURRENT_VERSION}
           release={updateRelease}
           onClose={() => setShowUpdateModal(false)}
         />

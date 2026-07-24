@@ -14,7 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { checkForUpdates, ReleaseInfo } from "../services/updater";
+import { checkForUpdates, ReleaseInfo, CURRENT_VERSION } from "../services/updater";
 
 interface SettingsModalProps {
   preferences: ApplicationPreferences;
@@ -70,7 +70,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setUpdateStatusMsg(`New version v${res.latestRelease.version} is available!`);
         onShowUpdateModal(res.latestRelease);
       } else {
-        setUpdateStatusMsg("SuperFan is up to date! (v1.1.0)");
+        setUpdateStatusMsg(`SuperFan is up to date! (v${CURRENT_VERSION})`);
       }
     } catch (err: any) {
       setUpdateStatusMsg(`Error: ${err?.message || err}`);
@@ -169,7 +169,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <Sparkles className="w-4 h-4 text-amber-400" />
             <div>
               <div className="text-xs font-semibold text-white">Software Update</div>
-              <div className="text-[10px] text-slate-400">Version 1.1.0</div>
+              <div className="text-[10px] text-slate-400">Version {CURRENT_VERSION}</div>
             </div>
           </div>
 
