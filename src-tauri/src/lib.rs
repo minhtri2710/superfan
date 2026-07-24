@@ -15,8 +15,10 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, Window,
 };
+use thermal_policy::adapters::{ProductionFanActuation, TauriSettingsStore};
 use thermal_policy::contract::{ThermalPolicyMode, ThermalPolicySettings, ThermalRule};
 use thermal_policy::runtime::ThermalPolicyRuntime;
+use thermal_policy::state::{ThermalPolicyChange, ThermalPolicyState};
 
 type PreferencesModule = ApplicationPreferencesModule<
     TauriPreferencesStore<tauri::Wry>,
@@ -28,8 +30,10 @@ struct ApplicationPreferencesState {
     telemetry_interval: tokio::sync::watch::Sender<u32>,
 }
 
-struct ThermalPolicyState {
-    settings: Mutex<ThermalPolicySettings>,
+type PolicyModule = ThermalPolicyState<TauriSettingsStore<tauri::Wry>, ProductionFanActuation>;
+
+struct ThermalPolicyApplicationState {
+    policy: Mutex<PolicyModule>,
 }
 
 #[tauri::command]
@@ -81,72 +85,51 @@ fn update_application_preferences(
 
 #[tauri::command]
 fn thermal_policy_settings(
-    state: tauri::State<'_, Arc<ThermalPolicyState>>,
+    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
 ) -> ThermalPolicySettings {
-    state.settings.lock().unwrap().clone()
+    state.policy.lock().unwrap().current()
 }
 
 #[tauri::command]
-fn select_thermal_policy_mode<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    state: tauri::State<'_, Arc<ThermalPolicyState>>,
+fn select_thermal_policy_mode(
+    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
     mode: ThermalPolicyMode,
 ) -> Result<ThermalPolicySettings, String> {
-    let settings = {
-        let mut current = state.settings.lock().unwrap();
-        let mut updated = current.clone();
-        updated.mode = mode;
-        thermal_policy::settings::save(&app, &updated)?;
-        *current = updated.clone();
-        updated
-    };
-    if settings.mode == ThermalPolicyMode::SystemAuto {
-        let _ = client::restore_all();
-    }
-    Ok(settings)
+    state
+        .policy
+        .lock()
+        .unwrap()
+        .update(ThermalPolicyChange::SelectMode(mode))
 }
 
 #[tauri::command]
-fn upsert_thermal_rule<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    state: tauri::State<'_, Arc<ThermalPolicyState>>,
+fn upsert_thermal_rule(
+    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
     rule: ThermalRule,
 ) -> Result<ThermalPolicySettings, String> {
-    let mut current = state.settings.lock().unwrap();
-    let mut updated = current.clone();
-    if let Some(existing) = updated
-        .rules
-        .iter_mut()
-        .find(|existing| existing.id == rule.id)
-    {
-        *existing = rule;
-    } else {
-        updated.rules.push(rule);
-    }
-    updated.mode = ThermalPolicyMode::Custom;
-    thermal_policy::settings::save(&app, &updated)?;
-    *current = updated.clone();
-    Ok(updated)
+    state
+        .policy
+        .lock()
+        .unwrap()
+        .update(ThermalPolicyChange::UpsertRule(rule))
 }
 
 #[tauri::command]
-fn delete_thermal_rule<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    state: tauri::State<'_, Arc<ThermalPolicyState>>,
+fn delete_thermal_rule(
+    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
     rule_id: String,
 ) -> Result<ThermalPolicySettings, String> {
-    let mut current = state.settings.lock().unwrap();
-    let mut updated = current.clone();
-    updated.rules.retain(|rule| rule.id != rule_id);
-    thermal_policy::settings::save(&app, &updated)?;
-    *current = updated.clone();
-    Ok(updated)
+    state
+        .policy
+        .lock()
+        .unwrap()
+        .update(ThermalPolicyChange::DeleteRule(rule_id))
 }
 
 fn ensure_direct_actuation_allowed(
-    state: &tauri::State<'_, Arc<ThermalPolicyState>>,
+    state: &tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
 ) -> Result<(), String> {
-    if state.settings.lock().unwrap().mode == ThermalPolicyMode::SystemAuto {
+    if state.policy.lock().unwrap().current().mode == ThermalPolicyMode::SystemAuto {
         Ok(())
     } else {
         Err("direct Fan actuation is disabled while Thermal policy is active".into())
@@ -155,7 +138,7 @@ fn ensure_direct_actuation_allowed(
 
 #[tauri::command]
 fn set_fan_speed(
-    state: tauri::State<'_, Arc<ThermalPolicyState>>,
+    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
     fan_id: usize,
     rpm: i32,
 ) -> Result<(), String> {
@@ -165,7 +148,7 @@ fn set_fan_speed(
 
 #[tauri::command]
 fn set_fan_mode(
-    state: tauri::State<'_, Arc<ThermalPolicyState>>,
+    state: tauri::State<'_, Arc<ThermalPolicyApplicationState>>,
     fan_id: usize,
     mode: String,
     rpm: Option<i32>,
@@ -247,10 +230,12 @@ pub fn run() {
                 telemetry_interval,
             }));
 
-            let policy_settings = thermal_policy::settings::load(&app_handle)
-                .unwrap_or_else(|_| ThermalPolicySettings::default());
-            let policy_state = Arc::new(ThermalPolicyState {
-                settings: Mutex::new(policy_settings),
+            let policy = ThermalPolicyState::load(
+                TauriSettingsStore::new(app_handle.clone()),
+                ProductionFanActuation,
+            );
+            let policy_state = Arc::new(ThermalPolicyApplicationState {
+                policy: Mutex::new(policy),
             });
             _app.manage(policy_state.clone());
 
@@ -307,7 +292,7 @@ pub fn run() {
                     )
                     .await;
                     let data = telemetry_snapshot();
-                    let settings = policy_state.settings.lock().unwrap().clone();
+                    let settings = policy_state.policy.lock().unwrap().current();
                     let now_unix_ms = data.captured_at_unix_ms;
                     let policy_result =
                         policy_runtime.evaluate_and_apply(&settings, &data, now_unix_ms);

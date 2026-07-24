@@ -1,10 +1,5 @@
 use super::contract::{ThermalPolicySettings, ThermalRule, ThermalTarget};
 use std::collections::HashSet;
-use tauri::Runtime;
-use tauri_plugin_store::StoreExt;
-
-const STORE_PATH: &str = "thermal-policy.json";
-const SETTINGS_KEY: &str = "settings";
 
 pub fn validate(settings: &ThermalPolicySettings) -> Result<(), String> {
     let mut ids = HashSet::new();
@@ -15,31 +10,6 @@ pub fn validate(settings: &ThermalPolicySettings) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-pub fn load<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<ThermalPolicySettings, String> {
-    let store = app.store(STORE_PATH).map_err(|error| error.to_string())?;
-    match store.get(SETTINGS_KEY) {
-        Some(value) => {
-            let settings = serde_json::from_value(value).map_err(|error| error.to_string())?;
-            validate(&settings)?;
-            Ok(settings)
-        }
-        None => Ok(ThermalPolicySettings::default()),
-    }
-}
-
-pub fn save<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    settings: &ThermalPolicySettings,
-) -> Result<(), String> {
-    validate(settings)?;
-    let store = app.store(STORE_PATH).map_err(|error| error.to_string())?;
-    store.set(
-        SETTINGS_KEY,
-        serde_json::to_value(settings).map_err(|error| error.to_string())?,
-    );
-    store.save().map_err(|error| error.to_string())
 }
 
 fn validate_rule(rule: &ThermalRule) -> Result<(), String> {
