@@ -196,7 +196,8 @@ pub fn run() {
             set_fan_mode,
             install_fan_actuation_helper,
             toggle_popover,
-            install_app_update
+            prepare_app_update,
+            install_prepared_app_update
         ])
         .setup(move |_app| {
             #[cfg(target_os = "macos")]
@@ -308,18 +309,21 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+fn current_app_path() -> Result<String, String> {
+    let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe_str = current_exe.to_string_lossy();
+
+    Ok(if let Some(pos) = exe_str.rfind(".app/") {
+        exe_str[..pos + 4].to_string()
+    } else {
+        "/Applications/SuperFan.app".to_string()
+    })
+}
+
 #[tauri::command]
-async fn install_app_update(download_url: String) -> Result<(), String> {
+async fn prepare_app_update(download_url: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let exe_str = current_exe.to_string_lossy();
-
-        let app_path = if let Some(pos) = exe_str.rfind(".app/") {
-            exe_str[..pos + 4].to_string()
-        } else {
-            "/Applications/SuperFan.app".to_string()
-        };
-
+        let app_path = current_app_path()?;
         let temp_dmg = "/tmp/superfan_update.dmg";
         let mount_point = "/tmp/superfan_mount";
 
@@ -330,7 +334,14 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
         let _ = std::fs::remove_dir_all(mount_point);
 
         let curl_status = std::process::Command::new("/usr/bin/curl")
-            .args(["-fL", "-A", "SuperFan-Updater", "-o", temp_dmg, &download_url])
+            .args([
+                "-fL",
+                "-A",
+                "SuperFan-Updater",
+                "-o",
+                temp_dmg,
+                &download_url,
+            ])
             .status()
             .map_err(|e| format!("Failed to download update: {e}"))?;
 
@@ -339,7 +350,14 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
         }
 
         let mount_status = std::process::Command::new("/usr/bin/hdiutil")
-            .args(["attach", temp_dmg, "-mountpoint", mount_point, "-nobrowse", "-quiet"])
+            .args([
+                "attach",
+                temp_dmg,
+                "-mountpoint",
+                mount_point,
+                "-nobrowse",
+                "-quiet",
+            ])
             .status()
             .map_err(|e| format!("Failed to mount update package: {e}"))?;
 
@@ -365,7 +383,9 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
             let _ = std::process::Command::new("/usr/bin/hdiutil")
                 .args(["detach", mount_point, "-quiet"])
                 .output();
-            return Err(format!("Updated application was not found in DMG: {source_app}"));
+            return Err(format!(
+                "Updated application was not found in DMG: {source_app}"
+            ));
         }
 
         let copy_status = std::process::Command::new("/bin/cp")
@@ -373,26 +393,38 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
             .status()
             .map_err(|e| format!("Failed to stage updated app: {e}"))?;
 
-        if !copy_status.success() {
-            let _ = std::process::Command::new("/usr/bin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
-            return Err("Failed to copy update into target folder.".into());
-        }
-
         let _ = std::process::Command::new("/usr/bin/hdiutil")
             .args(["detach", mount_point, "-quiet", "-force"])
             .output();
         let _ = std::fs::remove_file(temp_dmg);
 
-        let updater_script = format!(
-            "sleep 1; /bin/rm -rf '{app_path}'; /bin/mv '{staged_app}' '{app_path}'; /usr/bin/open '{app_path}'"
-        );
+        if !copy_status.success() {
+            return Err("Failed to copy update into target folder.".into());
+        }
 
-        let _ = std::process::Command::new("/bin/sh")
-            .args(["-c", &updater_script])
-            .spawn();
-
-        std::process::exit(0);
+        Ok(())
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn install_prepared_app_update() -> Result<(), String> {
+    let app_path = current_app_path()?;
+    let staged_app = format!("{app_path}.new");
+
+    if !std::path::Path::new(&staged_app).is_dir() {
+        return Err("The update has not finished downloading yet.".into());
+    }
+
+    let updater_script = format!(
+        "sleep 1; /bin/rm -rf '{app_path}'; /bin/mv '{staged_app}' '{app_path}'; /usr/bin/open '{app_path}'"
+    );
+
+    std::process::Command::new("/bin/sh")
+        .args(["-c", &updater_script])
+        .spawn()
+        .map_err(|e| format!("Failed to launch updater: {e}"))?;
+
+    std::process::exit(0);
 }

@@ -1,16 +1,20 @@
 import React, { useState } from "react";
-import { ReleaseInfo, performAutoInstall, openReleasePage } from "../services/updater";
+import { ReleaseInfo, installPreparedUpdate, openReleasePage } from "../services/updater";
 import { Sparkles, ExternalLink, Download, X, Calendar, ArrowRight, RefreshCw } from "lucide-react";
 
 interface UpdateModalProps {
   currentVersion: string;
   release: ReleaseInfo;
+  updateReady: boolean;
+  preparationError: string | null;
   onClose: () => void;
 }
 
 export const UpdateModal: React.FC<UpdateModalProps> = ({
   currentVersion,
   release,
+  updateReady,
+  preparationError,
   onClose,
 }) => {
   const [updating, setUpdating] = useState(false);
@@ -23,17 +27,17 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   };
 
   const handleInstallAction = async () => {
-    if (release.downloadUrl && isDmgUrl(release.downloadUrl)) {
+    if (release.downloadUrl && isDmgUrl(release.downloadUrl) && updateReady) {
       setUpdating(true);
       setUpdateError(null);
       try {
-        await performAutoInstall(release.downloadUrl);
+        await installPreparedUpdate();
       } catch (err: any) {
         setUpdateError(err?.message || "Auto-installation failed. Opening release download link instead.");
         setUpdating(false);
         openReleasePage(release.downloadUrl || release.htmlUrl);
       }
-    } else {
+    } else if (preparationError) {
       openReleasePage(release.downloadUrl || release.htmlUrl);
     }
   };
@@ -99,17 +103,29 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             </div>
           </div>
 
-          {/* Auto Updating Indicator */}
-          {updating && (
+          {!updateReady && !preparationError && (
             <div className="glass-card p-3 rounded-xl flex items-center gap-2 bg-slate-900/80 border border-amber-500/30 text-xs text-amber-300 font-medium">
               <RefreshCw className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
-              <span>Downloading update & replacing application...</span>
+              <span>Downloading and preparing update in the background...</span>
             </div>
           )}
 
-          {updateError && (
+          {updateReady && !updating && (
+            <div className="glass-card p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-200 font-medium">
+              Update is ready. Relaunch SuperFan to finish installing it.
+            </div>
+          )}
+
+          {updating && (
+            <div className="glass-card p-3 rounded-xl flex items-center gap-2 bg-slate-900/80 border border-amber-500/30 text-xs text-amber-300 font-medium">
+              <RefreshCw className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
+              <span>Replacing application and relaunching...</span>
+            </div>
+          )}
+
+          {(preparationError || updateError) && (
             <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[10px] font-mono text-rose-200">
-              {updateError}
+              {preparationError || updateError}
             </div>
           )}
         </div>
@@ -126,20 +142,22 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
 
           <button
             onClick={handleInstallAction}
-            disabled={updating}
+            disabled={updating || (!updateReady && !preparationError)}
             className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all disabled:opacity-50"
           >
             {updating ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : isDmgUrl(release.downloadUrl) ? (
+            ) : updateReady || preparationError ? (
               <Download className="w-3.5 h-3.5" />
             ) : (
               <ExternalLink className="w-3.5 h-3.5" />
             )}
             {updating
               ? "Updating..."
-              : isDmgUrl(release.downloadUrl)
-              ? `Install & Relaunch v${release.version}`
+              : !updateReady && !preparationError
+              ? "Preparing update..."
+              : updateReady
+              ? `Relaunch & Install v${release.version}`
               : `Download v${release.version}`}
           </button>
         </div>

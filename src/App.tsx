@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Header } from "./components/Header";
@@ -10,7 +10,7 @@ import { FanCard } from "./components/FanCard";
 import { BatteryCard } from "./components/BatteryCard";
 import { SettingsModal } from "./components/SettingsModal";
 import { UpdateModal } from "./components/UpdateModal";
-import { checkForUpdates, ReleaseInfo, CURRENT_VERSION } from "./services/updater";
+import { checkForUpdates, prepareAutoInstall, ReleaseInfo, CURRENT_VERSION } from "./services/updater";
 import {
   ApplicationPreferenceChange,
   ApplicationPreferences,
@@ -53,6 +53,46 @@ export function App() {
   const [updateRelease, setUpdateRelease] = useState<ReleaseInfo | null>(null);
   const [hasUpdateAvailable, setHasUpdateAvailable] = useState<boolean>(false);
   const [showUpdateModal, setShowUpdateModal] = useState<boolean>(false);
+  const [updateReady, setUpdateReady] = useState<boolean>(false);
+  const [updatePreparationError, setUpdatePreparationError] = useState<string | null>(null);
+  const preparingUpdateVersion = useRef<string | null>(null);
+  const preparedUpdateVersion = useRef<string | null>(null);
+
+  const prepareUpdate = (release: ReleaseInfo) => {
+    setHasUpdateAvailable(true);
+    setUpdateRelease(release);
+
+    if (preparedUpdateVersion.current === release.version) {
+      setUpdateReady(true);
+      return;
+    }
+    if (preparingUpdateVersion.current === release.version) return;
+    if (updatePreparationError) setUpdatePreparationError(null);
+
+    const downloadUrl = release.downloadUrl;
+    if (!downloadUrl?.split("?")[0].toLowerCase().endsWith(".dmg")) {
+      setUpdatePreparationError("This release does not include a DMG installer.");
+      return;
+    }
+
+    preparingUpdateVersion.current = release.version;
+    setUpdateReady(false);
+    setUpdatePreparationError(null);
+    prepareAutoInstall(downloadUrl)
+      .then(() => {
+        preparedUpdateVersion.current = release.version;
+        setUpdateReady(true);
+        setShowUpdateModal(true);
+      })
+      .catch((error) => {
+        setUpdatePreparationError(
+          error?.message || "Failed to prepare the update in the background."
+        );
+      })
+      .finally(() => {
+        preparingUpdateVersion.current = null;
+      });
+  };
 
   const recordSnapshot = (snapshot: HardwareTelemetrySnapshot) => {
     setTelemetry(snapshot);
@@ -87,8 +127,7 @@ export function App() {
     checkForUpdates()
       .then((res) => {
         if (res.hasUpdate && res.latestRelease) {
-          setHasUpdateAvailable(true);
-          setUpdateRelease(res.latestRelease);
+          prepareUpdate(res.latestRelease);
         }
       })
       .catch(() => {});
@@ -211,7 +250,7 @@ export function App() {
               fanActuationStatus={fanActuationStatus}
               onUpdatePreferences={handleUpdatePreferences}
               onShowUpdateModal={(release) => {
-                setUpdateRelease(release);
+                prepareUpdate(release);
                 setShowUpdateModal(true);
               }}
             />
@@ -325,6 +364,8 @@ export function App() {
         <UpdateModal
           currentVersion={CURRENT_VERSION}
           release={updateRelease}
+          updateReady={updateReady}
+          preparationError={updatePreparationError}
           onClose={() => setShowUpdateModal(false)}
         />
       )}

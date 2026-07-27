@@ -20,7 +20,7 @@ export interface UpdateCheckResult {
 
 const REPO_OWNER = "minhtri2710";
 const REPO_NAME = "superfan";
-export const CURRENT_VERSION = "1.2.4";
+export const CURRENT_VERSION = "1.2.5";
 
 export async function getAppVersion(): Promise<string> {
   try {
@@ -146,8 +146,12 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
   };
 }
 
-export async function performAutoInstall(downloadUrl: string): Promise<void> {
-  await invoke("install_app_update", { downloadUrl });
+export async function prepareAutoInstall(downloadUrl: string): Promise<void> {
+  await invoke("prepare_app_update", { downloadUrl });
+}
+
+export async function installPreparedUpdate(): Promise<void> {
+  await invoke("install_prepared_app_update");
 }
 
 export async function openReleasePage(url: string) {
