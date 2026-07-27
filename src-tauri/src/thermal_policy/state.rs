@@ -135,7 +135,7 @@ impl<S: SettingsStore, F: FanActuation> ThermalPolicyState<S, F> {
         Ok(())
     }
 
-    fn force_restore_system_auto(&mut self) -> Result<(), String> {
+    pub(crate) fn force_restore_system_auto(&mut self) -> Result<(), String> {
         self.fan_actuation.restore_all()?;
         self.applied_targets.clear();
         self.manual_plan_active = false;

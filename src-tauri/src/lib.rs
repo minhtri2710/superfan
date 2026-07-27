@@ -1,6 +1,7 @@
 pub mod application_preferences;
 pub mod fan_actuation;
 pub mod hardware_telemetry;
+pub mod power_management;
 pub mod smc;
 pub mod thermal_policy;
 
@@ -220,6 +221,8 @@ pub fn run() {
             let policy_state = Arc::new(Mutex::new(policy));
             _app.manage(policy_state.clone());
 
+            power_management::register_power_events(policy_state.clone());
+
             // Setup Tray Icon (No icon set, title only for clean menu bar text)
             let quit_i = MenuItem::with_id(_app, "quit", "Quit SuperFan", true, None::<&str>)?;
             let show_i = MenuItem::with_id(_app, "show", "Show SuperFan", true, None::<&str>)?;
@@ -271,6 +274,9 @@ pub fn run() {
                         &mut telemetry_interval_updates,
                     )
                     .await;
+                    if power_management::is_sleeping() {
+                        continue;
+                    }
                     let data = telemetry_snapshot();
                     let now_unix_ms = data.captured_at_unix_ms;
                     let _ = policy_state
@@ -317,7 +323,7 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
         let temp_dmg = "/tmp/superfan_update.dmg";
         let mount_point = "/tmp/superfan_mount";
 
-        let _ = std::process::Command::new("/sbin/hdiutil")
+        let _ = std::process::Command::new("/usr/bin/hdiutil")
             .args(["detach", mount_point, "-quiet"])
             .output();
         let _ = std::fs::remove_file(temp_dmg);
@@ -332,7 +338,7 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
             return Err("Failed to download update file from GitHub.".into());
         }
 
-        let mount_status = std::process::Command::new("/sbin/hdiutil")
+        let mount_status = std::process::Command::new("/usr/bin/hdiutil")
             .args(["attach", temp_dmg, "-mountpoint", mount_point, "-nobrowse", "-quiet"])
             .status()
             .map_err(|e| format!("Failed to mount update package: {e}"))?;
@@ -353,6 +359,14 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
         }
 
         let staged_app = format!("{app_path}.new");
+        let _ = std::fs::remove_dir_all(&staged_app);
+
+        if !std::path::Path::new(&source_app).is_dir() {
+            let _ = std::process::Command::new("/usr/bin/hdiutil")
+                .args(["detach", mount_point, "-quiet"])
+                .output();
+            return Err(format!("Updated application was not found in DMG: {source_app}"));
+        }
 
         let copy_status = std::process::Command::new("/bin/cp")
             .args(["-R", &source_app, &staged_app])
@@ -360,14 +374,29 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
             .map_err(|e| format!("Failed to stage updated app: {e}"))?;
 
         if !copy_status.success() {
-            let _ = std::process::Command::new("/sbin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
+            let _ = std::process::Command::new("/usr/bin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
             return Err("Failed to copy update into target folder.".into());
         }
 
-        let _ = std::process::Command::new("/bin/rm").args(["-rf", &app_path]).output();
-        let _ = std::process::Command::new("/bin/mv").args([&staged_app, &app_path]).output();
+        let remove_status = std::process::Command::new("/bin/rm")
+            .args(["-rf", &app_path])
+            .status()
+            .map_err(|e| format!("Failed to remove current application: {e}"))?;
+        if !remove_status.success() {
+            let _ = std::process::Command::new("/usr/bin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
+            return Err("Failed to remove current application.".into());
+        }
 
-        let _ = std::process::Command::new("/sbin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
+        let move_status = std::process::Command::new("/bin/mv")
+            .args([&staged_app, &app_path])
+            .status()
+            .map_err(|e| format!("Failed to install updated application: {e}"))?;
+        if !move_status.success() {
+            let _ = std::process::Command::new("/usr/bin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
+            return Err("Failed to install updated application.".into());
+        }
+
+        let _ = std::process::Command::new("/usr/bin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
         let _ = std::fs::remove_file(temp_dmg);
 
         let _ = std::process::Command::new("/usr/bin/open").arg(&app_path).spawn();
