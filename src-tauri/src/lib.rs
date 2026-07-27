@@ -324,7 +324,7 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
         let mount_point = "/tmp/superfan_mount";
 
         let _ = std::process::Command::new("/usr/bin/hdiutil")
-            .args(["detach", mount_point, "-quiet"])
+            .args(["detach", mount_point, "-quiet", "-force"])
             .output();
         let _ = std::fs::remove_file(temp_dmg);
         let _ = std::fs::remove_dir_all(mount_point);
@@ -378,28 +378,19 @@ async fn install_app_update(download_url: String) -> Result<(), String> {
             return Err("Failed to copy update into target folder.".into());
         }
 
-        let remove_status = std::process::Command::new("/bin/rm")
-            .args(["-rf", &app_path])
-            .status()
-            .map_err(|e| format!("Failed to remove current application: {e}"))?;
-        if !remove_status.success() {
-            let _ = std::process::Command::new("/usr/bin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
-            return Err("Failed to remove current application.".into());
-        }
-
-        let move_status = std::process::Command::new("/bin/mv")
-            .args([&staged_app, &app_path])
-            .status()
-            .map_err(|e| format!("Failed to install updated application: {e}"))?;
-        if !move_status.success() {
-            let _ = std::process::Command::new("/usr/bin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
-            return Err("Failed to install updated application.".into());
-        }
-
-        let _ = std::process::Command::new("/usr/bin/hdiutil").args(["detach", mount_point, "-quiet"]).output();
+        let _ = std::process::Command::new("/usr/bin/hdiutil")
+            .args(["detach", mount_point, "-quiet", "-force"])
+            .output();
         let _ = std::fs::remove_file(temp_dmg);
 
-        let _ = std::process::Command::new("/usr/bin/open").arg(&app_path).spawn();
+        let updater_script = format!(
+            "sleep 1; /bin/rm -rf '{app_path}'; /bin/mv '{staged_app}' '{app_path}'; /usr/bin/open '{app_path}'"
+        );
+
+        let _ = std::process::Command::new("/bin/sh")
+            .args(["-c", &updater_script])
+            .spawn();
+
         std::process::exit(0);
     })
     .await

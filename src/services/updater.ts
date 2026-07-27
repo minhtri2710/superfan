@@ -126,7 +126,7 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
               body: "A new version of SuperFan is available on GitHub Releases.",
               htmlUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/v${latestVer}`,
               publishedAt: "Latest",
-              downloadUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
+              downloadUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/v${latestVer}/SuperFan_${latestVer}_universal.dmg`,
             }
           : undefined,
       };
