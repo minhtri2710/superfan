@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::Duration;
 
 const MAX_REQUEST_BYTES: u64 = 4096;
-const IO_TIMEOUT: Duration = Duration::from_secs(2);
+const IO_TIMEOUT: Duration = Duration::from_secs(12);
 
 pub fn send_command(path: &Path, command: &FanCommand) -> Result<FanResponse, String> {
     let mut stream = UnixStream::connect(path).map_err(|error| error.to_string())?;

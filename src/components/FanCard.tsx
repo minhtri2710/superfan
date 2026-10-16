@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Fan, ShieldCheck, ShieldAlert } from "lucide-react";
 import { FanReading, ThermalPolicyMode } from "../types";
 
@@ -9,7 +9,7 @@ interface FanCardProps {
   onSetSpeed: (fanId: number, rpm: number) => void;
   onSetMode: (fanId: number, mode: "auto" | "manual", rpm?: number) => void;
   onEnableHelper?: () => void;
-  onSelectPolicyMode?: (mode: ThermalPolicyMode) => void;
+  onSelectPolicyMode?: (mode: ThermalPolicyMode) => Promise<void> | void;
 }
 
 export const FanCard: React.FC<FanCardProps> = ({
@@ -24,6 +24,13 @@ export const FanCard: React.FC<FanCardProps> = ({
   const minSpeedRpm = fan.min_speed_rpm ?? fan.speed_rpm;
   const maxSpeedRpm = fan.max_speed_rpm ?? fan.speed_rpm;
   const [sliderVal, setSliderVal] = useState<number>(fan.target_speed_rpm ?? fan.speed_rpm);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    if (!isDragging && fan.target_speed_rpm !== null) {
+      setSliderVal(fan.target_speed_rpm);
+    }
+  }, [fan.target_speed_rpm, isDragging]);
 
   const isReady = fanActuationStatus === "ready";
   const isPolicyActive = thermalPolicyMode !== "system_auto";
@@ -39,9 +46,9 @@ export const FanCard: React.FC<FanCardProps> = ({
       ? Math.max(0.3, 3 - (fan.speed_rpm / maxSpeedRpm) * 2.7)
       : 0;
 
-  const handleManualClick = () => {
+  const handleManualClick = async () => {
     if (isPolicyActive && onSelectPolicyMode) {
-      onSelectPolicyMode("system_auto");
+      await onSelectPolicyMode("system_auto");
     }
     onSetMode(fan.id, "manual", sliderVal);
   };
@@ -146,8 +153,13 @@ export const FanCard: React.FC<FanCardProps> = ({
             max={fan.max_speed_rpm}
             step={100}
             value={sliderVal}
+            onPointerDown={() => setIsDragging(true)}
             onChange={(e) => setSliderVal(Number(e.target.value))}
-            onMouseUp={() => onSetSpeed(fan.id, sliderVal)}
+            onPointerUp={() => {
+              setIsDragging(false);
+              onSetSpeed(fan.id, sliderVal);
+            }}
+            onKeyUp={() => onSetSpeed(fan.id, sliderVal)}
             className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
           />
         </div>

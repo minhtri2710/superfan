@@ -3,7 +3,8 @@ use std::sync::{Arc, Mutex};
 use crate::thermal_policy::state::{FanActuation, SettingsStore, ThermalPolicyState};
 
 static IS_SLEEPING: AtomicBool = AtomicBool::new(false);
-static mut RESTORE_FN: Option<Box<dyn Fn() -> Result<(), String> + Send + Sync>> = None;
+type RestoreCallback = Box<dyn Fn() -> Result<(), String> + Send + Sync>;
+static RESTORE_FN: Mutex<Option<RestoreCallback>> = Mutex::new(None);
 
 pub(crate) fn is_sleeping() -> bool {
     IS_SLEEPING.load(Ordering::Relaxed)
@@ -14,13 +15,17 @@ pub(crate) fn set_sleeping(sleeping: bool) {
     IS_SLEEPING.store(sleeping, Ordering::Relaxed);
 }
 
-extern "C" fn on_will_sleep() {
-    IS_SLEEPING.store(true, Ordering::Relaxed);
-    unsafe {
-        if let Some(ref restore) = RESTORE_FN {
+pub(crate) fn restore_system_auto() {
+    if let Ok(guard) = RESTORE_FN.lock() {
+        if let Some(ref restore) = *guard {
             let _ = restore();
         }
     }
+}
+
+extern "C" fn on_will_sleep() {
+    IS_SLEEPING.store(true, Ordering::Relaxed);
+    restore_system_auto();
 }
 
 extern "C" fn on_did_wake() {
@@ -46,8 +51,8 @@ where
         state.force_restore_system_auto()
     });
 
-    unsafe {
-        RESTORE_FN = Some(restore);
+    if let Ok(mut guard) = RESTORE_FN.lock() {
+        *guard = Some(restore);
     }
 
     #[cfg(target_os = "macos")]

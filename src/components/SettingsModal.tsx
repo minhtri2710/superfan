@@ -21,6 +21,7 @@ interface SettingsModalProps {
   fanActuationStatus: "not_registered" | "ready" | "unavailable";
   onUpdatePreferences: (change: ApplicationPreferenceChange) => void;
   onShowUpdateModal: (release: ReleaseInfo) => void;
+  onHelperInstalled?: () => Promise<void> | void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -28,6 +29,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   fanActuationStatus,
   onUpdatePreferences,
   onShowUpdateModal,
+  onHelperInstalled,
 }) => {
   const [installing, setInstalling] = useState(false);
   const [installMsg, setInstallMsg] = useState<string | null>(null);
@@ -52,6 +54,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       );
       const result = await invoke<string>("install_fan_actuation_helper");
       setInstallMsg(`Fan actuation helper status: ${result}`);
+      if (onHelperInstalled) {
+        await onHelperInstalled();
+      }
     } catch (err: any) {
       setInstallMsg(`Error: ${err}`);
     } finally {

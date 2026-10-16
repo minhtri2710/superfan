@@ -27,17 +27,17 @@ fi
 if [ "${TAURI_ENV_ARCH:-}" = "universal" ] || [ -d "$target_dir/universal-apple-darwin/$profile" ]; then
   arm_binary="$target_dir/aarch64-apple-darwin/$profile/fan-actuation-daemon"
   intel_binary="$target_dir/x86_64-apple-darwin/$profile/fan-actuation-daemon"
-  [ -x "$arm_binary" ] || cargo build "${build_args[@]}" --target aarch64-apple-darwin
-  [ -x "$intel_binary" ] || cargo build "${build_args[@]}" --target x86_64-apple-darwin
+  cargo build "${build_args[@]}" --target aarch64-apple-darwin
+  cargo build "${build_args[@]}" --target x86_64-apple-darwin
   mkdir -p "$target_dir/universal-apple-darwin/$profile"
   binary="$target_dir/universal-apple-darwin/$profile/fan-actuation-daemon"
   lipo -create "$arm_binary" "$intel_binary" -output "$binary"
 elif [ -n "${TAURI_ENV_ARCH:-}" ] && [ -d "$target_dir/${TAURI_ENV_ARCH}-apple-darwin/$profile" ]; then
   binary="$target_dir/${TAURI_ENV_ARCH}-apple-darwin/$profile/fan-actuation-daemon"
-  [ -x "$binary" ] || cargo build "${build_args[@]}" --target "${TAURI_ENV_ARCH}-apple-darwin"
+  cargo build "${build_args[@]}" --target "${TAURI_ENV_ARCH}-apple-darwin"
 else
   binary="$target_dir/$profile/fan-actuation-daemon"
-  [ -x "$binary" ] || cargo build "${build_args[@]}"
+  cargo build "${build_args[@]}"
 fi
 
 mkdir -p bundle/macos/fan-actuation

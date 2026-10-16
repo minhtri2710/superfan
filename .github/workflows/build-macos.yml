@@ -53,7 +53,8 @@ jobs:
           mkdir -p ../dmg
           if ! ls ../dmg/*.dmg 1> /dev/null 2>&1; then
             echo "Generating DMG with hdiutil..."
-            hdiutil create -volname "SuperFan" -srcfolder SuperFan.app -ov -format UDZO ../dmg/SuperFan-macOS-Universal.dmg
+            VERSION=$(node -p "require('../../../../../package.json').version")
+            hdiutil create -volname "SuperFan" -srcfolder SuperFan.app -ov -format UDZO "../dmg/SuperFan_${VERSION}_universal.dmg"
           fi
 
       - name: Upload Build Artifacts (.app.tar.gz & .dmg)

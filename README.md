@@ -30,7 +30,7 @@ Download the latest `.dmg` installer from [GitHub Releases](https://github.com/m
 - 📈 **Real-Time Temp History Sparkline**: Ultra-smooth SVG area chart tracking temperature trends with non-scaling stroke rendering.
 - ⚡ **Battery & Power Telemetry**: Real-time wattage draw (W), battery percentage, temperature, and cycle count via macOS `IOKit` (`IOPowerSources`, `AppleSmartBattery`, and `AppleSmartBatteryPack` fallback).
 - 📌 **Native Menu Bar & Dockless Accessory App**: Runs as a macOS Menu Bar utility (`LSUIElement` / `ActivationPolicy::Accessory`), automatically hiding from Dock and `Cmd + Tab` switcher, positioning its popover window directly below the `🔥 SuperFan` tray icon.
-- 🔒 **One-Time Privileged Helper**: Install `smc-helper` (`/usr/local/bin/smc-helper`) with `setuid root` once so no administrator password is required afterwards.
+- 🔒 **Privileged Fan Actuation Service**: Administrator-installed `launchd` helper (`/Library/PrivilegedHelperTools/com.superfan.fan-actuation`) with active console-user authorization, hardware envelope validation, and a 5-second fail-safe heartbeat lease.
 - 🎨 **Liquid Glass UI**: Premium macOS dark mode aesthetic with frameless rounded glass window, custom typography, and native window dragging.
 
 ---
@@ -43,7 +43,7 @@ Download the latest `.dmg` installer from [GitHub Releases](https://github.com/m
 | **Backend Core** | Rust (Tauri v2), Tokio async event loop |
 | **Window Positioning** | `tauri-plugin-positioner` (`Position::TrayBottomCenter`) |
 | **Hardware FFI** | Apple SMC FFI (`smc.c`/`smc.h`), `IOKitLib`, `IOPowerSources`, `AppleSmartBattery`, `AppleSmartBatteryPack` |
-| **Privileged Daemon** | Standalone C `smc-helper` binary installed with `setuid root (4755)` |
+| **Privileged Daemon** | Rust `fan-actuation-daemon` `launchd` service (`com.superfan.fan-actuation`) over Unix domain socket |
 | **CI/CD** | GitHub Actions Universal macOS App & DMG release pipeline |
 
 ---
@@ -80,10 +80,10 @@ The project includes a GitHub Actions pipeline ([`.github/workflows/build-macos.
 
 ## 🔒 Security & Privileges
 
-Writing fan speed target values (`F0Tg`, `F0Md`, `FS!`) on modern macOS requires root privileges. **SuperFan** handles this securely:
+Writing fan speed target values (`F*Tg`, `F*Md` / `F*md`, `Ftst`) on modern macOS requires root privileges. **SuperFan** handles this with macOS as the fail-safe authority:
 
 1. **Temperature & Telemetry Reading**: Runs completely unprivileged in user-space via IOKit.
-2. **Fan Control**: Prompt the administrator password once in **Settings -> Install Helper**. This installs `/usr/local/bin/smc-helper` owned by `root:wheel` with permission `4755` (`setuid`). Afterwards, fan adjustments execute instantly without password popups.
+2. **Fan Actuation Service**: Prompt for administrator authorization once in **Settings -> Install Helper**. This transactionally installs `/Library/PrivilegedHelperTools/com.superfan.fan-actuation` and `/Library/LaunchDaemons/com.superfan.fan-actuation.plist`. The daemon authorizes only the active console user via `getpeereid(3)`, validates targets against hardware RPM envelopes, and automatically restores **System Auto** if the heartbeat lease expires or communication fails.
 
 ---
 

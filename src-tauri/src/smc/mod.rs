@@ -192,12 +192,15 @@ pub fn get_fan_readings() -> Vec<RawFanReading> {
         let max_key = format!("F{}Mx", i);
         let target_key = format!("F{}Tg", i);
         let mode_key = format!("F{}Md", i);
+        let lower_mode_key = format!("F{}md", i);
 
         let speed = read_smc_key(&actual_key).map(|v| v as i32);
         let min_speed_rpm = read_smc_key(&min_key).map(|v| v as i32);
         let max_speed_rpm = read_smc_key(&max_key).map(|v| v as i32);
         let target_speed_rpm = read_smc_key(&target_key).map(|v| v as i32);
-        let is_manual = read_smc_key(&mode_key).map(|v| (v as i32) == 1);
+        let is_manual = read_smc_key(&mode_key)
+            .or_else(|| read_smc_key(&lower_mode_key))
+            .map(|v| (v as i32) == 1);
 
         if let Some(speed_rpm) = speed {
             fans.push(RawFanReading {

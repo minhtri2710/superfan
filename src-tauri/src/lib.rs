@@ -6,7 +6,9 @@ pub mod smc;
 pub mod thermal_policy;
 
 use application_preferences::adapters::{TauriAutostartAdapter, TauriPreferencesStore};
-use application_preferences::contract::{ApplicationPreferenceChange, ApplicationPreferences};
+use application_preferences::contract::{
+    ApplicationPreferenceChange, ApplicationPreferences, TemperatureUnit,
+};
 use application_preferences::preferences::ApplicationPreferencesModule;
 use fan_actuation::client::{self, ActuationStatus};
 use hardware_telemetry::contract::{FanActuationStatus, HardwareTelemetrySnapshot};
@@ -210,10 +212,11 @@ pub fn run() {
             )?;
             let (telemetry_interval, mut telemetry_interval_updates) =
                 tokio::sync::watch::channel(preferences.current().telemetry_interval_ms);
-            _app.manage(Arc::new(ApplicationPreferencesState {
+            let preferences_state = Arc::new(ApplicationPreferencesState {
                 preferences: Mutex::new(preferences),
                 telemetry_interval,
-            }));
+            });
+            _app.manage(preferences_state.clone());
 
             let policy = ThermalPolicyState::load(
                 TauriSettingsStore::new(app_handle.clone()),
@@ -256,6 +259,7 @@ pub fn run() {
                 })
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
+                        power_management::restore_system_auto();
                         app.exit(0);
                     }
                     "show" => {
@@ -292,7 +296,13 @@ pub fn run() {
                         } = &data.temperatures
                         {
                             if let Some(temp) = temperatures.cpu_celsius {
-                                let title = format!("🔥 {:.0}°C", temp);
+                                let unit = preferences_state
+                                    .preferences
+                                    .lock()
+                                    .unwrap()
+                                    .current()
+                                    .temperature_unit;
+                                let title = format_tray_temperature(temp, unit);
                                 let _ = tray.set_title(Some(title));
                             }
                         }
@@ -309,6 +319,24 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+fn format_tray_temperature(cpu_celsius: f64, unit: TemperatureUnit) -> String {
+    match unit {
+        TemperatureUnit::Celsius => format!("🔥 {:.0}°C", cpu_celsius),
+        TemperatureUnit::Fahrenheit => format!("🔥 {:.0}°F", cpu_celsius * 9.0 / 5.0 + 32.0),
+    }
+}
+
+fn validate_update_download_url(download_url: &str) -> Result<(), String> {
+    let trimmed = download_url.trim();
+    let allowed_origin = trimmed.starts_with("https://github.com/minhtri2710/superfan/")
+        || trimmed.starts_with("https://objects.githubusercontent.com/");
+    let path_part = trimmed.split('?').next().unwrap_or("");
+    if !allowed_origin || !path_part.to_ascii_lowercase().ends_with(".dmg") {
+        return Err("Update URL must be an official SuperFan GitHub Release DMG.".into());
+    }
+    Ok(())
+}
+
 fn current_app_path() -> Result<String, String> {
     let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe_str = current_exe.to_string_lossy();
@@ -322,87 +350,103 @@ fn current_app_path() -> Result<String, String> {
 
 #[tauri::command]
 async fn prepare_app_update(download_url: String) -> Result<(), String> {
+    validate_update_download_url(&download_url)?;
     tokio::task::spawn_blocking(move || {
         let app_path = current_app_path()?;
-        let temp_dmg = "/tmp/superfan_update.dmg";
-        let mount_point = "/tmp/superfan_mount";
-
-        let _ = std::process::Command::new("/usr/bin/hdiutil")
-            .args(["detach", mount_point, "-quiet", "-force"])
-            .output();
-        let _ = std::fs::remove_file(temp_dmg);
-        let _ = std::fs::remove_dir_all(mount_point);
-
-        let curl_status = std::process::Command::new("/usr/bin/curl")
-            .args([
-                "-fL",
-                "-A",
-                "SuperFan-Updater",
-                "-o",
-                temp_dmg,
-                &download_url,
-            ])
-            .status()
-            .map_err(|e| format!("Failed to download update: {e}"))?;
-
-        if !curl_status.success() {
-            return Err("Failed to download update file from GitHub.".into());
+        let mktemp_output = std::process::Command::new("/usr/bin/mktemp")
+            .args(["-d", "/private/tmp/superfan-update.XXXXXX"])
+            .output()
+            .map_err(|e| format!("Failed to create temporary update directory: {e}"))?;
+        if !mktemp_output.status.success() {
+            return Err("Failed to allocate temporary update directory.".into());
         }
+        let work_dir = String::from_utf8_lossy(&mktemp_output.stdout)
+            .trim()
+            .to_string();
+        let temp_dmg = format!("{work_dir}/superfan_update.dmg");
+        let mount_point = format!("{work_dir}/mount");
+        let _ = std::fs::create_dir_all(&mount_point);
 
-        let mount_status = std::process::Command::new("/usr/bin/hdiutil")
-            .args([
-                "attach",
-                temp_dmg,
-                "-mountpoint",
-                mount_point,
-                "-nobrowse",
-                "-quiet",
-            ])
-            .status()
-            .map_err(|e| format!("Failed to mount update package: {e}"))?;
+        let result = (|| -> Result<(), String> {
+            let curl_status = std::process::Command::new("/usr/bin/curl")
+                .args([
+                    "-fL",
+                    "-A",
+                    "SuperFan-Updater",
+                    "-o",
+                    &temp_dmg,
+                    &download_url,
+                ])
+                .status()
+                .map_err(|e| format!("Failed to download update: {e}"))?;
 
-        if !mount_status.success() {
-            return Err("Failed to mount DMG package.".into());
-        }
+            if !curl_status.success() {
+                return Err("Failed to download update file from GitHub.".into());
+            }
 
-        let mut source_app = format!("{mount_point}/SuperFan.app");
-        if let Ok(entries) = std::fs::read_dir(mount_point) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("app") {
-                    source_app = path.to_string_lossy().to_string();
-                    break;
+            let mount_status = std::process::Command::new("/usr/bin/hdiutil")
+                .args([
+                    "attach",
+                    &temp_dmg,
+                    "-mountpoint",
+                    &mount_point,
+                    "-nobrowse",
+                    "-quiet",
+                ])
+                .status()
+                .map_err(|e| format!("Failed to mount update package: {e}"))?;
+
+            if !mount_status.success() {
+                return Err("Failed to mount DMG package.".into());
+            }
+
+            let mut source_app = format!("{mount_point}/SuperFan.app");
+            if let Ok(entries) = std::fs::read_dir(&mount_point) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|s| s.to_str()) == Some("app") {
+                        source_app = path.to_string_lossy().to_string();
+                        break;
+                    }
                 }
             }
-        }
 
-        let staged_app = format!("{app_path}.new");
-        let _ = std::fs::remove_dir_all(&staged_app);
+            if !std::path::Path::new(&source_app).is_dir() {
+                return Err(format!(
+                    "Updated application was not found in DMG: {source_app}"
+                ));
+            }
 
-        if !std::path::Path::new(&source_app).is_dir() {
-            let _ = std::process::Command::new("/usr/bin/hdiutil")
-                .args(["detach", mount_point, "-quiet"])
-                .output();
-            return Err(format!(
-                "Updated application was not found in DMG: {source_app}"
-            ));
-        }
+            let verify_status = std::process::Command::new("/usr/bin/codesign")
+                .args(["--verify", "--deep", "--strict", &source_app])
+                .status()
+                .map_err(|e| format!("Failed to verify update signature: {e}"))?;
 
-        let copy_status = std::process::Command::new("/bin/cp")
-            .args(["-R", &source_app, &staged_app])
-            .status()
-            .map_err(|e| format!("Failed to stage updated app: {e}"))?;
+            if !verify_status.success() {
+                return Err("Downloaded application failed code signature verification.".into());
+            }
+
+            let staged_app = format!("{app_path}.new");
+            let _ = std::fs::remove_dir_all(&staged_app);
+
+            let copy_status = std::process::Command::new("/bin/cp")
+                .args(["-R", &source_app, &staged_app])
+                .status()
+                .map_err(|e| format!("Failed to stage updated app: {e}"))?;
+
+            if !copy_status.success() {
+                return Err("Failed to copy update into target folder.".into());
+            }
+
+            Ok(())
+        })();
 
         let _ = std::process::Command::new("/usr/bin/hdiutil")
-            .args(["detach", mount_point, "-quiet", "-force"])
+            .args(["detach", &mount_point, "-quiet", "-force"])
             .output();
-        let _ = std::fs::remove_file(temp_dmg);
+        let _ = std::fs::remove_dir_all(&work_dir);
 
-        if !copy_status.success() {
-            return Err("Failed to copy update into target folder.".into());
-        }
-
-        Ok(())
+        result
     })
     .await
     .map_err(|e| e.to_string())?
@@ -417,14 +461,48 @@ async fn install_prepared_app_update() -> Result<(), String> {
         return Err("The update has not finished downloading yet.".into());
     }
 
-    let updater_script = format!(
-        "sleep 1; /bin/rm -rf '{app_path}'; /bin/mv '{staged_app}' '{app_path}'; /usr/bin/open '{app_path}'"
-    );
+    power_management::restore_system_auto();
 
     std::process::Command::new("/bin/sh")
-        .args(["-c", &updater_script])
+        .args([
+            "-c",
+            "sleep 1; /bin/rm -rf -- \"$1\"; /bin/mv -- \"$2\" \"$1\"; /usr/bin/open -- \"$1\"",
+            "--",
+            &app_path,
+            &staged_app,
+        ])
         .spawn()
         .map_err(|e| format!("Failed to launch updater: {e}"))?;
 
     std::process::exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_tray_temperature, validate_update_download_url, TemperatureUnit};
+
+    #[test]
+    fn tray_temperature_respects_selected_unit() {
+        assert_eq!(
+            format_tray_temperature(50.0, TemperatureUnit::Celsius),
+            "🔥 50°C"
+        );
+        assert_eq!(
+            format_tray_temperature(50.0, TemperatureUnit::Fahrenheit),
+            "🔥 122°F"
+        );
+    }
+
+    #[test]
+    fn update_download_url_requires_official_github_dmg() {
+        assert!(validate_update_download_url(
+            "https://github.com/minhtri2710/superfan/releases/download/v1.2.5/SuperFan_1.2.5_universal.dmg"
+        )
+        .is_ok());
+        assert!(validate_update_download_url("https://evil.example.com/SuperFan.dmg").is_err());
+        assert!(validate_update_download_url(
+            "https://github.com/minhtri2710/superfan/releases/download/v1.2.5/SuperFan.zip"
+        )
+        .is_err());
+    }
 }

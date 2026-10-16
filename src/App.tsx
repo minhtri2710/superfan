@@ -249,6 +249,10 @@ export function App() {
               preferences={preferences}
               fanActuationStatus={fanActuationStatus}
               onUpdatePreferences={handleUpdatePreferences}
+              onHelperInstalled={async () => {
+                const updated = await invoke<HardwareTelemetrySnapshot>("fetch_telemetry");
+                recordSnapshot(updated);
+              }}
               onShowUpdateModal={(release) => {
                 prepareUpdate(release);
                 setShowUpdateModal(true);

@@ -20,7 +20,7 @@ export interface UpdateCheckResult {
 
 const REPO_OWNER = "minhtri2710";
 const REPO_NAME = "superfan";
-export const CURRENT_VERSION = "1.2.5";
+export const CURRENT_VERSION = "1.2.6";
 
 export async function getAppVersion(): Promise<string> {
   try {

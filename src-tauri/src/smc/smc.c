@@ -396,6 +396,9 @@ static int readFanModeRaw(int fanNum, io_connect_t conn)
 // Mechanism from agoodkind/macos-smc-fan (MIT).
 kern_return_t unlockFanManual(int fanNum, io_connect_t conn)
 {
+    if (readFanModeRaw(fanNum, conn) == 1)
+        return kIOReturnSuccess;
+
     // Phase 1: direct write, then confirm it took.
     writeFanModeRaw(fanNum, 1, conn);
     usleep(200000); // 0.2s: long enough for a reclaim to show up
@@ -415,6 +418,7 @@ kern_return_t unlockFanManual(int fanNum, io_connect_t conn)
             if (readFanModeRaw(fanNum, conn) == 1)
                 return kIOReturnSuccess;
         }
+        writeFtst(0, conn);
     }
 
     return kIOReturnError;
