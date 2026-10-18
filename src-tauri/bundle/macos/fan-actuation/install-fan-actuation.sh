@@ -108,7 +108,9 @@ fi
 # Bootstrap the service; if launchd still considers it registered, kickstart it
 if ! bootstrap_error=$(/bin/launchctl bootstrap system "$destination_plist" 2>&1); then
   if ! /bin/launchctl kickstart -k "system/$label" 2>/dev/null; then
-    echo "could not bootstrap or start Fan actuation helper ($bootstrap_error); previous installation was restored" >&2
+    restored=""
+    if $had_helper || $had_plist; then restored="; previous installation was restored"; fi
+    echo "could not bootstrap or start Fan actuation helper ($bootstrap_error)$restored" >&2
     exit 1
   fi
 fi
