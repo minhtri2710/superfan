@@ -70,6 +70,8 @@ fi
 
 /usr/bin/install -o root -g wheel -m 0755 "$source_helper" "$staging_dir/helper"
 /usr/bin/install -o root -g wheel -m 0644 "$source_plist" "$staging_dir/service.plist"
+# install copies com.apple.quarantine from downloaded bundles; launchd refuses quarantined daemons (error 155).
+/usr/bin/xattr -c "$staging_dir/helper" "$staging_dir/service.plist"
 /usr/bin/plutil -lint "$staging_dir/service.plist" >/dev/null
 
 mutation_started=true
@@ -104,9 +106,9 @@ fi
 /bin/launchctl enable "system/$label" 2>/dev/null || true
 
 # Bootstrap the service; if launchd still considers it registered, kickstart it
-if ! /bin/launchctl bootstrap system "$destination_plist" 2>/dev/null; then
+if ! bootstrap_error=$(/bin/launchctl bootstrap system "$destination_plist" 2>&1); then
   if ! /bin/launchctl kickstart -k "system/$label" 2>/dev/null; then
-    echo "could not bootstrap or start Fan actuation helper; previous installation was restored" >&2
+    echo "could not bootstrap or start Fan actuation helper ($bootstrap_error); previous installation was restored" >&2
     exit 1
   fi
 fi
