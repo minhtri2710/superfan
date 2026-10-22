@@ -226,7 +226,7 @@ export function App() {
   const battery: BatteryReading | null =
     telemetry?.battery.status === "available" ? telemetry.battery.value : null;
   const fanActuationStatus = telemetry?.fan_actuation_status ?? "not_registered";
-  const hasSmcAccess = telemetry !== null && telemetry.temperatures.status !== "unavailable";
+  const hasSmcAccess = telemetry?.temperatures.status === "available";
 
   return (
     <div className="w-full h-screen glass-panel flex flex-col rounded-2xl overflow-hidden border border-white/10 shadow-2xl">

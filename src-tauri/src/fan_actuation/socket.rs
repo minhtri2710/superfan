@@ -3,10 +3,11 @@ use std::io::{BufReader, Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-const MAX_REQUEST_BYTES: u64 = 4096;
+const MAX_REQUEST_BYTES: usize = 4096;
 const IO_TIMEOUT: Duration = Duration::from_secs(12);
+const SERVER_IO_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub fn send_command(path: &Path, command: &FanCommand) -> Result<FanResponse, String> {
     let mut stream = UnixStream::connect(path).map_err(|error| error.to_string())?;
@@ -36,10 +37,7 @@ pub fn serve_connection(
     hardware: &mut impl FanHardware,
 ) -> Result<Option<FanCommand>, String> {
     stream
-        .set_read_timeout(Some(IO_TIMEOUT))
-        .map_err(|error| error.to_string())?;
-    stream
-        .set_write_timeout(Some(IO_TIMEOUT))
+        .set_write_timeout(Some(SERVER_IO_TIMEOUT))
         .map_err(|error| error.to_string())?;
 
     let peer_uid = peer_uid(&stream).map_err(|error| error.to_string())?;
@@ -53,7 +51,7 @@ pub fn serve_connection(
         return Ok(None);
     }
 
-    let command = match read_message(&stream).and_then(|payload| {
+    let command = match read_message_with_timeout(&stream, SERVER_IO_TIMEOUT).and_then(|payload| {
         serde_json::from_slice::<FanCommand>(&payload).map_err(|e| e.to_string())
     }) {
         Ok(command) => command,
@@ -96,12 +94,42 @@ pub fn try_accept_once(
 fn read_message(stream: &UnixStream) -> Result<Vec<u8>, String> {
     let mut message = Vec::new();
     BufReader::new(stream)
-        .take(MAX_REQUEST_BYTES + 1)
+        .take(MAX_REQUEST_BYTES as u64 + 1)
         .read_to_end(&mut message)
         .map_err(|error| error.to_string())?;
 
-    if message.len() as u64 > MAX_REQUEST_BYTES {
+    if message.len() > MAX_REQUEST_BYTES {
         return Err("fan actuation request is too large".into());
+    }
+    if message.last() != Some(&b'\n') {
+        return Err("fan actuation request must end with a newline".into());
+    }
+    message.pop();
+    Ok(message)
+}
+
+fn read_message_with_timeout(stream: &UnixStream, timeout: Duration) -> Result<Vec<u8>, String> {
+    let deadline = Instant::now() + timeout;
+    let mut message = Vec::new();
+    let mut chunk = [0; 512];
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err("fan actuation request timed out".into());
+        }
+        stream
+            .set_read_timeout(Some(remaining.max(Duration::from_millis(1))))
+            .map_err(|error| error.to_string())?;
+        let count = (&*stream)
+            .read(&mut chunk)
+            .map_err(|error| error.to_string())?;
+        if count == 0 {
+            break;
+        }
+        message.extend_from_slice(&chunk[..count]);
+        if message.len() > MAX_REQUEST_BYTES {
+            return Err("fan actuation request is too large".into());
+        }
     }
     if message.last() != Some(&b'\n') {
         return Err("fan actuation request must end with a newline".into());
@@ -134,14 +162,14 @@ fn peer_uid(stream: &UnixStream) -> std::io::Result<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{accept_once, send_command};
+    use super::{accept_once, send_command, serve_connection};
     use crate::fan_actuation::protocol::{FanCommand, FanEnvelope, FanHardware, FanResponse};
     use std::collections::BTreeMap;
     use std::io::{Read, Write};
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::PathBuf;
     use std::thread;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     #[derive(Default)]
     struct FixtureHardware {
@@ -236,6 +264,43 @@ mod tests {
         assert!(matches!(response, FanResponse::Error { .. }));
         assert!(hardware.targets.is_empty());
         assert!(hardware.restored.is_empty());
+    }
+
+    #[test]
+    fn idle_peer_releases_daemon_before_lease_expires() {
+        let (server, client) = UnixStream::pair().unwrap();
+        let uid = unsafe { libc::geteuid() };
+        let started = Instant::now();
+        let mut hardware = FixtureHardware::default().with_fan(0, 1200, 6000);
+        let result = serve_connection(server, uid, &mut hardware);
+        drop(client);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert_eq!(hardware.restored, vec![0]);
+        assert!(matches!(result, Ok(None) | Err(_)));
+    }
+
+    #[test]
+    fn slow_peer_cannot_extend_request_deadline() {
+        let (server, mut client) = UnixStream::pair().unwrap();
+        let uid = unsafe { libc::geteuid() };
+        let (completion, finished) = std::sync::mpsc::channel();
+        let worker = thread::spawn(move || {
+            let mut hardware = FixtureHardware::default().with_fan(0, 1200, 6000);
+            let result = serve_connection(server, uid, &mut hardware);
+            completion.send((result, hardware)).unwrap();
+        });
+
+        for _ in 0..6 {
+            if client.write_all(b" ").is_err() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(250));
+        }
+        let (result, hardware) = finished.recv_timeout(Duration::from_secs(1)).unwrap();
+        drop(client);
+        worker.join().unwrap();
+        assert!(matches!(result, Ok(None) | Err(_)));
+        assert_eq!(hardware.restored, vec![0]);
     }
 
     #[test]

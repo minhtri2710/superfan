@@ -57,6 +57,7 @@ fn run() -> Result<(), String> {
     listener
         .set_nonblocking(true)
         .map_err(|error| error.to_string())?;
+    // Console users can change without a daemon restart; peer UID authorization gates commands.
     fs::set_permissions(socket_path, fs::Permissions::from_mode(0o666))
         .map_err(|error| error.to_string())?;
 

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ApplicationPreferenceChange, ApplicationPreferences } from "../types";
+import { ApplicationPreferenceChange, ApplicationPreferences, FanActuationStatus } from "../types";
 import {
   ShieldCheck,
   ShieldAlert,
@@ -52,7 +52,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           ? "Installing Fan actuation helper..."
           : "Repairing Fan actuation helper...",
       );
-      const result = await invoke<string>("install_fan_actuation_helper");
+      const result = await invoke<FanActuationStatus>("install_fan_actuation_helper");
       setInstallMsg(`Fan actuation helper status: ${result}`);
       if (onHelperInstalled) {
         await onHelperInstalled();

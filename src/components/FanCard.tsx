@@ -91,7 +91,7 @@ export const FanCard: React.FC<FanCardProps> = ({
           </button>
           <button
             onClick={handleManualClick}
-            disabled={!isReady}
+            disabled={!isReady || fan.min_speed_rpm === null || fan.max_speed_rpm === null}
             className={`px-2 py-0.5 rounded-md font-medium transition-all ${
               fan.mode === "manual" || isPolicyActive
                 ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
@@ -162,6 +162,11 @@ export const FanCard: React.FC<FanCardProps> = ({
             onKeyUp={() => onSetSpeed(fan.id, sliderVal)}
             className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
           />
+        </div>
+      ) : fan.mode === "manual" ? (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-200">
+          <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+          <span>Manual control unavailable: fan RPM limits not reported</span>
         </div>
       ) : (
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900/40 border border-white/5 text-[10px] text-slate-400">

@@ -65,6 +65,10 @@ The Fan actuation module owns privileged writes. An administrator-authorized ins
 | `set_fan_mode` | Select direct manual behavior or System Auto while automatic policy is inactive. |
 | `install_fan_actuation_helper` | Prompt for administrator authorization and install or repair the privileged helper. |
 | `toggle_popover` | Show or hide the application window, positioned at `Position::TrayBottomCenter`. |
+| `prepare_app_update` | Download, verify, and stage an application update from an official release DMG. |
+| `install_prepared_app_update` | Exit the application and launch the staged update installer. |
+
+Source: [`src-tauri/src/lib.rs:188-203`](../src-tauri/src/lib.rs) (registration), [`src-tauri/src/lib.rs:351-453`](../src-tauri/src/lib.rs) (prepare), [`src-tauri/src/lib.rs:455-477`](../src-tauri/src/lib.rs) (install).
 
 ## SMC and IOKit readings
 
